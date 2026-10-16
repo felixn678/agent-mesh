@@ -230,7 +230,7 @@ func TestEnvFilesAndWorkerEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	claudeEnv, gitEnv, err := buildEnvs([]string{"PATH=/bin", "GITHUB_TOKEN=x", "AGENTMESH_TOKEN=y", "AGENTMESH_HOOKS=on",
-		"AGENTMESH_SESSION_TOKEN=s", "AGENTMESH_URL=http://hub"}, "", gh)
+		"AGENTMESH_SESSION_TOKEN=s", "AGENTMESH_URL=http://hub", "SSH_AUTH_SOCK=/tmp/agent.sock", "SSH_AGENT_PID=9"}, "", gh)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,5 +286,20 @@ func TestLoadConfigDefaultsNextToConfigFile(t *testing.T) {
 	t.Setenv("AGENTMESH_URL", "http://env.example:1")
 	if c, _ = LoadConfig(p); c.HubURL != "http://env.example:1" {
 		t.Fatalf("env fallback = %q", c.HubURL)
+	}
+}
+
+func TestSSHAgentOnlyForOptedInProfiles(t *testing.T) {
+	d := &Daemon{claudeEnv: []string{"PATH=/bin", "AGENTMESH_HOOKS=off"}, sshEnv: []string{"SSH_AUTH_SOCK=/tmp/agent.sock"},
+		cfg: Config{ToolProfiles: map[string]ToolProfile{"default": {Allow: []string{"Read"}},
+			"with-ssh": {Allow: []string{"Read"}, AllowSSHAgent: true}}}}
+	if env := d.workerEnv("default"); slices.Contains(env, "SSH_AUTH_SOCK=/tmp/agent.sock") {
+		t.Errorf("default profile got the ssh agent: %v", env)
+	}
+	if env := d.workerEnv("with-ssh"); !slices.Contains(env, "SSH_AUTH_SOCK=/tmp/agent.sock") {
+		t.Errorf("opted-in profile lacks the ssh agent: %v", env)
+	}
+	if len(d.claudeEnv) != 2 {
+		t.Errorf("workerEnv mutated the shared env: %v", d.claudeEnv)
 	}
 }

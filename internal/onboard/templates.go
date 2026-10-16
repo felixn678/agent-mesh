@@ -63,14 +63,23 @@ gitleaks_bin = "gitleaks"
 [repos]
 # "github.com/<user>/<repo>" = "https://github.com/<user>/<repo>.git"
 
+# Default: read, edit and commit only. Workers run no repo code, so this is
+# safe for any repo (tasks that name no profile use it).
 [tool_profiles.default]
+allow = ["Read", "Edit", "Write", "Glob", "Grep",
+         "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)",
+         "Bash(git add *)", "Bash(git commit *)"]
+
+# with-tests RUNS REPO CODE AS YOUR USER: tests and builds execute whatever the
+# repo (or the agent) wrote, outside the worker's deny list, with access to
+# your files and tokens. Only for repos you trust; tasks opt in with
+# --profile with-tests. Adjust the commands to the repo's toolchain.
+[tool_profiles.with-tests]
 allow = ["Read", "Edit", "Write", "Glob", "Grep",
          "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)",
          "Bash(git add *)", "Bash(git commit *)",
          "Bash(go test *)", "Bash(go build *)", "Bash(go vet *)"]
-
-[tool_profiles.edit-only]
-allow = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git add *)", "Bash(git commit *)"]
+# allow_ssh_agent = true   # pass SSH_AUTH_SOCK (e.g. private modules over ssh); off by default
 `, hubURL, tokenFile, stateDir, filepath.Join(filepath.Dir(tokenFile), "gh.env"))
 }
 

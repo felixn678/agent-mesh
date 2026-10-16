@@ -14,6 +14,10 @@ import (
 // ToolProfile is a host-owned tool allow list. Tasks only name a profile.
 type ToolProfile struct {
 	Allow []string `toml:"allow"`
+	// AllowSSHAgent passes SSH_AUTH_SOCK to workers of this profile (e.g. for
+	// test suites that fetch private modules over ssh). Off by default: the
+	// agent can sign as you for every key it holds.
+	AllowSSHAgent bool `toml:"allow_ssh_agent"`
 }
 
 // Config is daemon.toml. Paths may start with "~/"; Load expands them.

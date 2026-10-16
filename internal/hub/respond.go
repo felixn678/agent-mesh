@@ -58,6 +58,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, api.CodeNotFound, err.Error())
 	case errors.Is(err, store.ErrLeaseLost):
 		writeError(w, http.StatusConflict, api.CodeLeaseLost, err.Error())
+	case errors.Is(err, store.ErrLeaseReaped):
+		writeError(w, http.StatusConflict, api.CodeLeaseReaped, err.Error())
 	case errors.Is(err, store.ErrCancelled):
 		writeError(w, http.StatusConflict, api.CodeCancelled, err.Error())
 	case errors.Is(err, store.ErrConflict):

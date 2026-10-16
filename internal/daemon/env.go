@@ -17,6 +17,20 @@ import (
 // or session tokens of a shell that started the daemon) is stripped too.
 var workerStrippedEnv = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
 
+// sshAgentEnv reaches workers only of profiles with allow_ssh_agent.
+var sshAgentEnv = []string{"SSH_AUTH_SOCK", "SSH_AGENT_PID"}
+
+// pickEnv returns the base entries whose key is in keys.
+func pickEnv(base, keys []string) []string {
+	var out []string
+	for _, kv := range base {
+		if k, _, _ := strings.Cut(kv, "="); contains(keys, k) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // readEnvFile parses KEY=VALUE lines ("#" comments, blank lines ignored).
 func readEnvFile(path string) ([]string, error) {
 	if path == "" {
@@ -63,7 +77,7 @@ func buildEnvs(base []string, claudeFile, ghFile string) (claudeEnv, gitEnv []st
 	}
 	for _, kv := range base {
 		k, _, _ := strings.Cut(kv, "=")
-		if !contains(workerStrippedEnv, k) && !strings.HasPrefix(k, "AGENTMESH_") {
+		if !contains(workerStrippedEnv, k) && !contains(sshAgentEnv, k) && !strings.HasPrefix(k, "AGENTMESH_") {
 			claudeEnv = append(claudeEnv, kv)
 		}
 	}

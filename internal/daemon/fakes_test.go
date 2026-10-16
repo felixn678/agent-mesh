@@ -111,6 +111,7 @@ type fakePR struct {
 	State  string `json:"state"`
 	URL    string `json:"url"`
 	Body   string `json:"body"`
+	Fork   bool   `json:"fork,omitempty"` // head branch lives in another repository
 }
 
 type ghState struct {
@@ -163,11 +164,12 @@ func fakeGH() int {
 				Number int    `json:"number"`
 				Head   string `json:"headRefName"`
 				URL    string `json:"url"`
+				Cross  bool   `json:"isCrossRepository"`
 			}
 			out := []row{}
 			for _, p := range s.PRs {
 				if p.State == "open" {
-					out = append(out, row{p.Number, p.Head, p.URL})
+					out = append(out, row{p.Number, p.Head, p.URL, p.Fork})
 				}
 			}
 			b, _ := json.Marshal(out)
@@ -176,7 +178,7 @@ func fakeGH() int {
 			body, _ := io.ReadAll(os.Stdin)
 			s.Next++
 			url := fmt.Sprintf("https://github.com/example/demo/pull/%d", s.Next)
-			s.PRs = append(s.PRs, fakePR{s.Next, flag("--head"), flag("--base"), "open", url, string(body)})
+			s.PRs = append(s.PRs, fakePR{s.Next, flag("--head"), flag("--base"), "open", url, string(body), false})
 			fmt.Println(url)
 		case "pr close":
 			if err := os.Remove(filepath.Join(dir, "gh-close-fail")); err == nil {

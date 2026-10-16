@@ -87,11 +87,22 @@ func (s *Store) Heartbeat(ctx context.Context, host string, id, fence int64) err
 	if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("heartbeat: %w", err)
 	}
-	_, err = s.classify(ctx, host, id, fence)
-	if err == nil { // state matched no outcome set -> holder does not own a live lease
-		err = ErrLeaseLost
+	state, err := s.classify(ctx, host, id, fence)
+	if err != nil {
+		return err
 	}
-	return err
+	if state == api.StateStuck && s.reaperStuck(ctx, id) {
+		return ErrLeaseReaped
+	}
+	return ErrLeaseLost // holder does not own a live lease
+}
+
+// reaperStuck reports whether a stuck task still carries the lease marker the
+// reaper leaves (the holder's own Complete/Fail clears it).
+func (s *Store) reaperStuck(ctx context.Context, id int64) bool {
+	var marked bool
+	err := s.db.QueryRowContext(ctx, "SELECT lease_expires_at IS NOT NULL FROM tasks WHERE id=? AND state='stuck'", id).Scan(&marked)
+	return err == nil && marked
 }
 
 // classify explains why a fenced update matched zero rows. It returns the

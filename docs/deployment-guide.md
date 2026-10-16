@@ -47,8 +47,11 @@ After `up` or `join`, a daemon has no repos yet: edit `[repos]` in `daemon.toml`
 | `gh_env_file` | `gh.env` next to `daemon.toml` | 0600 env file for git/gh only, e.g. `GH_TOKEN=<fine-grained PAT>`; a missing file means gh uses its own login |
 | `[repos]` | empty | allowlist: repo key -> remote URL the daemon clones. Keys are compared canonically; use `"github.com/<user>/<repo>"` so tasks added from sessions match |
 | `[tool_profiles.<name>]` `allow = [...]` | none | tool allow list for tasks naming that profile (default profile name: `default`). Bare `Bash` / `Bash(*)` is refused |
+| `[tool_profiles.<name>]` `allow_ssh_agent` | `false` | pass `SSH_AUTH_SOCK` / `SSH_AGENT_PID` to workers of this profile |
 
-Env files must not be group/world readable. Worker env never contains `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or `AGENTMESH_TOKEN`.
+Generated configs ship two profiles. `default` is edit-only (Read/Edit/Write/Glob/Grep plus `git status|diff|log|add|commit`): workers run no repo code. `with-tests` adds test/build commands and therefore **runs repo code as your user**, outside the worker's deny list (that list only binds Claude's own tools), with access to your files and tokens: use it only for repos you trust, via `--profile with-tests`.
+
+Env files must not be group/world readable. Worker env never contains `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, any `AGENTMESH_*` variable (except `AGENTMESH_HOOKS=off`), or the ssh agent (unless the profile sets `allow_ssh_agent`).
 
 ## Manual setup
 

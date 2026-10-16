@@ -35,6 +35,7 @@ type Daemon struct {
 	slotsOverridden bool
 	sample          sampler
 	claudeEnv       []string
+	sshEnv          []string // ssh-agent vars, added for allow_ssh_agent profiles
 	gitEnv          []string
 
 	repoMu    sync.Mutex
@@ -85,7 +86,7 @@ func New(cfg Config, hub hubAPI, log *slog.Logger) (*Daemon, error) {
 		}
 	}
 	d := &Daemon{cfg: cfg, hub: hub, log: log, hw: detectHardware(), sample: sampleHost,
-		claudeEnv: claudeEnv, gitEnv: gitEnv, repoLocks: map[string]*sync.Mutex{},
+		claudeEnv: claudeEnv, sshEnv: pickEnv(os.Environ(), sshAgentEnv), gitEnv: gitEnv, repoLocks: map[string]*sync.Mutex{},
 		running: map[int64]string{}, skip: map[int64]time.Time{},
 		killGrace: 30 * time.Second, retryBase: 5 * time.Second}
 	d.slots, d.slotsOverridden = slotsFor(cfg.MaxSlots, d.hw)

@@ -286,7 +286,9 @@ func TestBreakerOpensAfterTwoInfraFailures(t *testing.T) {
 	}
 }
 
-func TestReapedTaskStillRecordsFinishedWork(t *testing.T) {
+// A task reaped at its attempt cap (not reclaimed) is still ours alone: the
+// replayed publish pushes, opens the PR and completes it late.
+func TestReapedTaskStillPublishesFinishedWork(t *testing.T) {
 	e := newEnv(t)
 	task := e.addTask("commit", func(s *api.TaskSpec) { s.MaxAttempts = 1 })
 	d := e.daemon(nil)
@@ -303,12 +305,54 @@ func TestReapedTaskStillRecordsFinishedWork(t *testing.T) {
 	d2.replayJournals(t.Context())
 	waitTasks(t, d2)
 	got := e.task(task.ID)
-	if got.State != api.StateStuck || !strings.HasPrefix(got.Reason, "lease lost before publish") ||
-		got.SessionID != fakeSessionID || got.Worktree == "" {
-		t.Fatalf("late fail not recorded: %+v", got)
+	if got.State != api.StateDone || got.PRURL == "" || got.SessionID != fakeSessionID {
+		t.Fatalf("late publish not recorded: %+v", got)
 	}
-	if _, err := os.Stat(got.Worktree); err != nil || strings.Contains(e.remoteBranches(), "agentmesh/") {
-		t.Fatalf("worktree must be kept and nothing pushed: %v", err)
+	if !strings.Contains(e.remoteBranches(), got.Branch) || len(e.ghState().PRs) != 1 {
+		t.Fatalf("branch %q not pushed or PR missing", got.Branch)
+	}
+}
+
+// gatedHub lets a test hold heartbeats while it moves the hub clock and
+// reaps, so no heartbeat lands in between.
+type gatedHub struct {
+	hubAPI
+	mu sync.RWMutex
+}
+
+func (h *gatedHub) Heartbeat(ctx context.Context, id int64, req api.HeartbeatRequest) error {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.hubAPI.Heartbeat(ctx, id, req)
+}
+
+// Reaped while claude still runs: the daemon lets it finish and publishes
+// late instead of killing it (lease_lost would kill it).
+func TestReapedMidRunFinishesAndPublishes(t *testing.T) {
+	e := newEnv(t)
+	task := e.addTask("slowcommit", func(s *api.TaskSpec) { s.MaxAttempts = 1 })
+	hub := &gatedHub{hubAPI: e.hub.Host("host-a")}
+	d := e.daemon(hub)
+	d.tick(context.Background())
+	n := d.names(task.ID, 1)
+	waitFor(t, "claude started", func() bool {
+		var rec runRecord
+		return readJSONFile(n.runRec, &rec) == nil && rec.PID > 0
+	})
+	hub.mu.Lock()
+	e.hub.Clock.Advance(40 * time.Minute)
+	_, err := e.hub.Store.Reap(context.Background())
+	hub.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.task(task.ID); got.State != api.StateStuck {
+		t.Fatalf("setup: reaper should mark stuck: %+v", got)
+	}
+	waitTasks(t, d)
+	got := e.task(task.ID)
+	if got.State != api.StateDone || got.PRURL == "" || got.CostUSD != 0.25 {
+		t.Fatalf("reaped run not finished late: %+v", got)
 	}
 }
 
