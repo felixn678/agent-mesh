@@ -1,4 +1,4 @@
--- Schema version 2 (v1 -> v2 adds the columns marked "v2" via ALTER, see db.go). Statements are idempotent so concurrent first opens are safe.
+-- Schema version 3 (older databases gain the columns marked "v2"/"v3" via ALTER, see db.go). Statements are idempotent so concurrent first opens are safe.
 CREATE TABLE IF NOT EXISTS tasks (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,  -- ids never reused (branch names embed id)
   repo             TEXT NOT NULL,                 -- logical key; host maps to clone URL
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   fence            INTEGER NOT NULL DEFAULT 0,
   attempts         INTEGER NOT NULL DEFAULT 0,
   max_attempts     INTEGER NOT NULL DEFAULT 3,
-  lease_expires_at INTEGER,
+  lease_expires_at INTEGER,                       -- kept on reaper-stuck rows: the owner may still finish
   last_heartbeat_at INTEGER,
   branch           TEXT,
   pr_url           TEXT,
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   target_session   TEXT,                          -- v2: only this interactive session may claim
   created_by_session TEXT,                        -- v2: gets a hub message when the task ends
   summary          TEXT,                          -- v2: worker result text
+  claim_request_id TEXT,                          -- v3: holder's request id of the current claim (retry replay)
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL,
   finished_at      INTEGER

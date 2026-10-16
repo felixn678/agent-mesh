@@ -264,8 +264,10 @@ func (c *Client) SendMessage(ctx context.Context, req api.SendMessageRequest) (a
 	return m, err
 }
 
-// Inbox returns up to 50 unread messages for session, oldest first; markRead
-// consumes them.
+// Inbox returns up to 50 unread messages for session, oldest first. markRead
+// consumes them on the hub before the response arrives (at most once: a lost
+// response loses them). Prefer markRead=false followed by AckMessages with
+// the ids actually delivered (at least once).
 func (c *Client) Inbox(ctx context.Context, session string, markRead bool) ([]api.Message, error) {
 	q := url.Values{"session": {session}}
 	if markRead {
@@ -295,4 +297,13 @@ func (c *Client) InboxWait(ctx context.Context, session string, markRead bool, w
 	_, err := c.doWithTimeout(ctx, time.Duration(secs)*time.Second+10*time.Second, http.MethodGet,
 		"/api/v1/messages/inbox?"+q.Encode(), nil, &out)
 	return out, err
+}
+
+// AckMessages marks delivered messages of session read; ids already read or
+// not addressed to session are ignored, so retries are safe. Returns how many
+// changed.
+func (c *Client) AckMessages(ctx context.Context, session string, ids []int64) (int64, error) {
+	var r api.AckMessagesResponse
+	_, err := c.do(ctx, http.MethodPost, "/api/v1/messages/ack", api.AckMessagesRequest{Session: session, IDs: ids}, &r)
+	return r.Acked, err
 }

@@ -19,7 +19,11 @@ func TestReapStuckAtAttemptCap(t *testing.T) {
 	if err != nil || res.Stuck != 0 {
 		t.Fatalf("live lease reaped: %+v %v", res, err)
 	}
-	e.clock.Advance(6 * time.Minute)
+	e.clock.Advance(6 * time.Minute) // expired, but the owner may still revive it
+	if res, err = e.st.Reap(bg); err != nil || res.Stuck != 0 {
+		t.Fatalf("reaped inside the revive window: %+v %v", res, err)
+	}
+	e.clock.Advance(30 * time.Minute) // expired 31m: past the 30m revive window
 	if res, err = e.st.Reap(bg); err != nil || res.Stuck != 1 {
 		t.Fatalf("want 1 stuck: %+v %v", res, err)
 	}

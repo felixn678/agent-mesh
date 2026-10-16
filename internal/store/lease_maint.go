@@ -25,10 +25,14 @@ type ReapResult struct {
 func (s *Store) Reap(ctx context.Context) (ReapResult, error) {
 	now := s.ms()
 	var r ReapResult
+	// At the cap nobody else may claim the task, so wait out ReviveWindow (the
+	// owner may still heartbeat). lease_expires_at is kept: it marks the row as
+	// reaper-stuck, which lets the owner still Complete or Fail it.
 	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET state='stuck',
 	    reason='lease expired on '||claimed_by||' at attempt cap',
-	    lease_expires_at=NULL, finished_at=:now, updated_at=:now
-	  WHERE state='running' AND lease_expires_at < :now AND attempts >= max_attempts`, sql.Named("now", now))
+	    finished_at=:now, updated_at=:now
+	  WHERE state='running' AND lease_expires_at < :now - :revive AND attempts >= max_attempts`,
+		sql.Named("now", now), sql.Named("revive", s.cfg.ReviveWindow.Milliseconds()))
 	if err != nil {
 		return r, fmt.Errorf("reap at cap: %w", err)
 	}

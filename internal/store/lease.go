@@ -15,7 +15,7 @@ import (
 // reclaimable immediately. Right-hand sides see pre-update column values.
 const claimSQL = `
 UPDATE tasks SET state='running', claimed_by=:host, fence=fence+1, attempts=attempts+1,
-  lease_expires_at=:now+:ttl, last_heartbeat_at=:now, updated_at=:now,
+  claim_request_id=:rid, lease_expires_at=:now+:ttl, last_heartbeat_at=:now, updated_at=:now,
   reason = CASE WHEN state='running' THEN 'lease expired on '||claimed_by ELSE reason END
 WHERE id = (SELECT id FROM tasks
   WHERE (state='queued' OR (state='running' AND lease_expires_at < :now))
@@ -39,7 +39,15 @@ func jsonList(v []string) string {
 }
 
 // Claim hands the oldest eligible task to host, or (nil, nil) when none fits.
+// With req.RequestID, a retry of a claim whose response was lost returns the
+// task host already holds under that id (same fence) instead of a new one.
 func (s *Store) Claim(ctx context.Context, host string, req api.ClaimRequest) (*api.ClaimedTask, error) {
+	return s.claimOnce(ctx, host, req.RequestID, func(q querier) (*api.ClaimedTask, error) {
+		return s.claim(ctx, q, host, req)
+	})
+}
+
+func (s *Store) claim(ctx context.Context, q querier, host string, req api.ClaimRequest) (*api.ClaimedTask, error) {
 	now := s.ms()
 	repos := make([]string, 0, len(req.Repos))
 	for _, r := range req.Repos { // same normalization as stored task repos
@@ -48,8 +56,8 @@ func (s *Store) Claim(ctx context.Context, host string, req api.ClaimRequest) (*
 		}
 	}
 	var c api.ClaimedTask
-	err := s.db.QueryRowContext(ctx, claimSQL,
-		sql.Named("host", host), sql.Named("now", now), sql.Named("ttl", s.cfg.ttlFor(host).Milliseconds()),
+	err := q.QueryRowContext(ctx, claimSQL,
+		sql.Named("host", host), sql.Named("rid", nullable(req.RequestID)), sql.Named("now", now), sql.Named("ttl", s.cfg.ttlFor(host).Milliseconds()),
 		sql.Named("repos", jsonList(repos)), sql.Named("modes", jsonList(req.Modes)),
 		sql.Named("profiles", jsonList(req.Profiles)), sql.Named("budget_cap", req.BudgetCap),
 	).Scan(&c.ID, &c.Fence, &c.Repo, &c.BaseBranch, &c.Prompt, &c.PermissionMode, &c.ToolProfile, &c.MaxBudgetUSD)
@@ -112,12 +120,17 @@ func (s *Store) classify(ctx context.Context, host string, id, fence int64) (str
 
 // finish runs a fenced terminal/handback update. okStates are the states that
 // mean "this exact outcome was already recorded", making replays idempotent.
-func (s *Store) finish(ctx context.Context, host string, id, fence int64, set string, okStates []string,
+// With afterReap the owner may also finish a task the reaper marked stuck at
+// the attempt cap (recognisable by its kept lease_expires_at): the fence never
+// moved, so nobody else can hold it, and the worker's real outcome wins. Every
+// set clause clears lease_expires_at, so a replay lands in okStates.
+func (s *Store) finish(ctx context.Context, host string, id, fence int64, afterReap bool, set string, okStates []string,
 	args ...any) (alreadyApplied bool, err error) {
 	named := append([]any{sql.Named("id", id), sql.Named("fence", fence), sql.Named("host", host),
-		sql.Named("now", s.ms())}, args...)
+		sql.Named("now", s.ms()), sql.Named("after_reap", afterReap)}, args...)
 	res, err := s.db.ExecContext(ctx, "UPDATE tasks SET "+set+", updated_at=:now "+
-		"WHERE id=:id AND fence=:fence AND claimed_by=:host AND state='running'", named...)
+		"WHERE id=:id AND fence=:fence AND claimed_by=:host AND (state='running' OR "+
+		"(:after_reap AND state='stuck' AND lease_expires_at IS NOT NULL))", named...)
 	if err != nil {
 		return false, fmt.Errorf("update lease: %w", err)
 	}
@@ -143,7 +156,7 @@ func (s *Store) Complete(ctx context.Context, host string, id int64, r api.Compl
 	if err := r.Validate(); err != nil {
 		return false, err
 	}
-	return s.finish(ctx, host, id, r.Fence,
+	return s.finish(ctx, host, id, r.Fence, true,
 		`state='done', branch=:branch, pr_url=:pr, session_id=:sess, cost_usd=cost_usd+:cost,
 		 publish_note=:note, summary=:summary, lease_expires_at=NULL, finished_at=:now`,
 		[]string{api.StateDone},
@@ -161,7 +174,7 @@ func (s *Store) Fail(ctx context.Context, host string, id int64, r api.FailReque
 	if r.Retry {
 		ok = append(ok, api.StateQueued)
 	}
-	return s.finish(ctx, host, id, r.Fence,
+	return s.finish(ctx, host, id, r.Fence, true,
 		`state=CASE WHEN :retry AND attempts<max_attempts THEN 'queued' ELSE 'stuck' END,
 		 finished_at=CASE WHEN :retry AND attempts<max_attempts THEN NULL ELSE :now END,
 		 cost_usd=cost_usd+:cost, reason=:reason, worktree=:wt, session_id=COALESCE(NULLIF(:sess,''), session_id),
@@ -175,7 +188,7 @@ func (s *Store) Release(ctx context.Context, host string, id int64, r api.Releas
 	if err := r.Validate(); err != nil {
 		return false, err
 	}
-	return s.finish(ctx, host, id, r.Fence,
+	return s.finish(ctx, host, id, r.Fence, false,
 		`state='queued', attempts=attempts-1, reason=:reason, lease_expires_at=NULL`,
 		[]string{api.StateQueued},
 		sql.Named("reason", "released by "+host+": "+r.Reason))

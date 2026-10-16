@@ -86,14 +86,14 @@ func overnight(t *testing.T) *hubtest.Hub {
 	clk.Advance(5 * time.Minute)
 	f.claim("host-a", "api", 0) // #6: lease expires, below cap and not yet stale
 
-	clk.Advance(10 * time.Minute)
+	clk.Advance(21 * time.Minute) // #4 expires past the revive window by the final reap
 	f.load("host-a", api.HostLoad{Cores: 8, RAMGB: 8, CPUModel: "Example CPU 8-core", Slots: 1,
 		CPUPct: 85, MemAvailPct: 41, AgentWorktrees: 2, Running: 1, ThrottleReason: "cpu 85%",
 		ClaudeVersion: "2.1.0", AgentVersion: "0.1.0"})
 	clk.Advance(9 * time.Minute)
 	f.load("host-b", api.HostLoad{Cores: 16, RAMGB: 64, Slots: 3, SlotsOverridden: true, CPUPct: 12,
 		MemAvailPct: 70, ClaudeVersion: "2.0.9", AgentVersion: "0.1.0"})
-	clk.Advance(time.Minute) // 08:30
+	clk.Advance(time.Minute) // 08:41
 	if _, err := f.h.Store.Reap(bg); err != nil {
 		t.Fatal(err)
 	}

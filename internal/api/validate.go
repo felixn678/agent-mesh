@@ -214,6 +214,9 @@ func (r ClaimRequest) Validate() error {
 	if math.IsNaN(r.BudgetCap) || r.BudgetCap < 0 {
 		return invalid("budget_cap out of range")
 	}
+	if err := checkRequestID(r.RequestID); err != nil {
+		return err
+	}
 	if r.Load != nil {
 		return r.Load.Validate()
 	}

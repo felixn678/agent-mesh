@@ -19,8 +19,13 @@ func (s *Server) sessionHolder(w http.ResponseWriter, r *http.Request, p api.Pri
 	return holder, true
 }
 
+// sessionClaim accepts an empty body or {"request_id": ...}.
 func (s *Server) sessionClaim(w http.ResponseWriter, r *http.Request, p api.Principal) {
-	c, err := s.st.ClaimForSession(r.Context(), p.Host, r.PathValue("id"))
+	var req api.SessionClaimRequest
+	if !decodeOptional(w, r, &req) {
+		return
+	}
+	c, err := s.st.ClaimForSessionRequest(r.Context(), p.Host, r.PathValue("id"), req)
 	if err != nil {
 		s.fail(w, err)
 		return

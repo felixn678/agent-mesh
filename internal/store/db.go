@@ -18,7 +18,7 @@ var schemaSQL string
 
 // schemaVersion is stored in PRAGMA user_version. Future changes must be
 // forward-only migrations keyed on it.
-const schemaVersion = 2
+const schemaVersion = 3
 
 // upgradeV1 adds the v2 columns to a v1 database. SQLite has no ADD COLUMN IF
 // NOT EXISTS, so a concurrent first open may find a column already added.
@@ -29,6 +29,12 @@ var upgradeV1 = []string{
 	"ALTER TABLE tasks ADD COLUMN summary TEXT",
 	"ALTER TABLE sessions ADD COLUMN repo TEXT NOT NULL DEFAULT ''",
 }
+
+// upgradeV2 adds the v3 claim retry column.
+var upgradeV2 = []string{"ALTER TABLE tasks ADD COLUMN claim_request_id TEXT"}
+
+// upgrades maps a stored version to the statements that lift it by one.
+var upgrades = map[int][]string{1: upgradeV1, 2: upgradeV2}
 
 // Open opens (creating if needed, mode 0600) the hub database and migrates it.
 // synchronous=FULL: a fence that was returned to a worker must survive power
@@ -70,10 +76,10 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	if v == schemaVersion {
 		return nil
 	}
-	if v == 1 {
-		for _, q := range upgradeV1 {
+	for from := v; from >= 1 && from < schemaVersion; from++ { // v0 = fresh file: schemaSQL creates everything
+		for _, q := range upgrades[from] {
 			if _, err := db.ExecContext(ctx, q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-				return fmt.Errorf("upgrade schema: %w", err)
+				return fmt.Errorf("upgrade schema v%d: %w", from, err)
 			}
 		}
 	}
