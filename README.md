@@ -20,6 +20,15 @@ go install github.com/felixn678/agent-mesh/cmd/agent-mesh@latest
 
 Check with `agent-mesh version`, then follow [Quick start](#quick-start): `agent-mesh up` on the hub machine, or `agent-mesh join ...` (from `agent-mesh invite` on the hub) on the others, then `agent-mesh setup-claude` and `agent-mesh doctor`.
 
+## Updating
+
+```sh
+agent-mesh update --check   # exit 0: up to date, 10: a newer release exists
+agent-mesh update           # install the latest release, restart this machine's services
+```
+
+`update` downloads the same archive and `SHA256SUMS` as the installer, refuses a checksum mismatch, replaces the running binary in place and restarts the hub and daemon services that `up`/`join` installed (hub first; `--no-restart` skips this). Claude hooks and the MCP server pick up the new binary on their next run. Update the hub machine first, then the others. To roll back, name a release: `agent-mesh update --version v0.1.0`. A binary from `go install` or `go run` is not replaced: `update` prints the `go install ...@<tag>` command instead.
+
 ## How it works (2-minute version)
 
 - **One hub** runs on one machine. It is a small server with a SQLite database that holds a task queue and a message inbox. Nothing else stores state.

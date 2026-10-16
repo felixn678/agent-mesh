@@ -14,6 +14,7 @@ One Go module (`github.com/felixn678/agent-mesh`), one binary (`agent-mesh`). `c
 | `internal/cli` | human subcommands `task`, `hosts`, `inbox --wait`; Claude Code hooks (`hook session-start|prompt|stop|session-end|mcp-headers`); `setup-claude` (byte-splicing settings merge); `hubenv/` resolves URL and tokens | `run.go`, `hook_cmds.go`, `setup_claude.go` |
 | `internal/daemon` | per-host pull worker: config and caps, hardware slots and load, claim loop with circuit breaker, daemon-owned clones and worktrees, isolated `claude -p` runner, write-ahead publish journal (scan, push, supersede, draft PR, complete), orphan sweep, GC | `run.go`, `loop.go`, `task_exec.go`, `publish.go` |
 | `internal/report` | morning report (needs attention, hosts, queues, cost); `report --out` guard | `build.go`, `sections.go` |
+| `internal/update` | `agent-mesh update`: download + verify a release, atomic in-place replace, restart services via onboard | `update.go`, `download.go`, `install.go`, `services.go` |
 | `internal/onboard` | `up`, `invite`, `join`, `doctor`: config and token files, `hub.toml` edits, invite bundles, systemd/launchd user services | `up.go`, `invite.go`, `join.go`, `doctor.go` |
 | `internal/version` | build version (set by `make build` via ldflags) | `version.go` |
 | `internal/hubtest` | test helper: real hub on loopback with a real SQLite file and a fake clock | `hubtest.go` |
