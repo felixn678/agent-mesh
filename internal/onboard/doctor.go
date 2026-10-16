@@ -93,6 +93,9 @@ func runChecks(ctx context.Context, e *Env) []Result {
 	}
 
 	url, src := hubURLFor(e)
+	if r, ok := sessionURLCheck(e, url, src); ok {
+		add(r)
+	}
 	reach := hubReachable(ctx, url, src)
 	add(reach)
 	for _, n := range names {

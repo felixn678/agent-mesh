@@ -157,3 +157,33 @@ func TestTargetGoneLeavesRunningTasksAlone(t *testing.T) {
 		t.Fatalf("running task touched: %+v", got)
 	}
 }
+
+// A task can never be claimed by a session that opted out of worker mode:
+// adding one is refused, and a target that turns worker mode off later has
+// its queued task reaped with a clear reason.
+func TestTasksForNonWorkerSessions(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	off, on := false, true
+	e.session(t, "host-a", "boss", proj)
+	if _, err := e.st.RegisterSession(ctx, "host-a", api.RegisterSessionRequest{ID: "lazy", Repo: proj, Worker: &off}); err != nil {
+		t.Fatal(err)
+	}
+	spec := api.TaskSpec{Repo: proj, Prompt: "p", MaxBudgetUSD: 1, TargetSession: "lazy"}
+	_, err := e.st.AddTask(ctx, spec, api.Principal{Host: "host-a", Session: true})
+	wantErr(t, err, store.ErrNotWorker)
+
+	if _, err := e.st.RegisterSession(ctx, "host-a", api.RegisterSessionRequest{ID: "flip", Repo: proj, Worker: &on}); err != nil {
+		t.Fatal(err)
+	}
+	task := targetedTask(t, e, "flip")
+	if _, err := e.st.RegisterSession(ctx, "host-a", api.RegisterSessionRequest{ID: "flip", Worker: &off}); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := e.st.Reap(ctx); err != nil || r.TargetGone != 1 {
+		t.Fatalf("reap: %+v %v", r, err)
+	}
+	if got := e.get(t, task.ID); got.State != api.StateStuck || got.Reason != "target session does not take tasks" {
+		t.Fatalf("task for a non-worker target: %+v", got)
+	}
+}

@@ -73,6 +73,8 @@ func storeErr(err error) *mcp.CallToolResult {
 		return errResult("invalid: %v", err)
 	case errors.Is(err, store.ErrNotFound):
 		return errResult("task not found")
+	case errors.Is(err, store.ErrLeaseReaped):
+		return errResult("lease reaped: the task was marked stuck while this session was silent; nobody else holds it, so finish and call task_done or task_fail")
 	case errors.Is(err, store.ErrLeaseLost):
 		return errResult("lease lost: this session no longer holds the task; stop working on it")
 	case errors.Is(err, store.ErrCancelled):

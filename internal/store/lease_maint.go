@@ -66,16 +66,20 @@ func (s *Store) Reap(ctx context.Context) (ReapResult, error) {
 }
 
 // reapTargetGone marks queued tasks stuck whose target session can no longer
-// claim them: ended, or unseen for the alive window. A target that never
-// registered (or was pruned) counts once the task itself is that old. The
-// completion trigger notifies the creator; an admin may requeue.
+// claim them: ended, unseen for the alive window, or restarted with worker
+// mode off. A target that never registered (or was pruned) counts once the
+// task itself is that old. The completion trigger notifies the creator; an
+// admin may requeue.
 func (s *Store) reapTargetGone(ctx context.Context, now int64) (int64, error) {
 	cut := now - s.cfg.sessionAlive().Milliseconds()
-	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET state='stuck', reason='target session gone',
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET state='stuck',
+	    reason=CASE WHEN EXISTS (SELECT 1 FROM sessions s WHERE s.id = tasks.target_session AND s.worker = 0
+	                             AND s.ended_at IS NULL AND s.last_seen_at >= :cut)
+	           THEN 'target session does not take tasks' ELSE 'target session gone' END,
 	    finished_at=:now, updated_at=:now
 	  WHERE state='queued' AND target_session IS NOT NULL
 	    AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = tasks.target_session
-	                    AND s.ended_at IS NULL AND s.last_seen_at >= :cut)
+	                    AND s.ended_at IS NULL AND s.last_seen_at >= :cut AND s.worker = 1)
 	    AND (EXISTS (SELECT 1 FROM sessions s WHERE s.id = tasks.target_session) OR tasks.created_at < :cut)`,
 		sql.Named("now", now), sql.Named("cut", cut))
 	if err != nil {

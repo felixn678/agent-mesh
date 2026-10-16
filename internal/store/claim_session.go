@@ -139,5 +139,12 @@ func (s *Store) AddTaskReplay(ctx context.Context, spec api.TaskSpec, p api.Prin
 			return api.Task{}, false, err
 		}
 	}
+	// A task for a session that opted out of worker mode could never be
+	// claimed; refuse it up front (an unknown target may still register).
+	if spec.TargetSession != "" {
+		if target, err := s.getSession(ctx, spec.TargetSession); err == nil && !target.Worker {
+			return api.Task{}, false, ErrNotWorker
+		}
+	}
 	return s.add(ctx, spec, p.CreatedBy())
 }

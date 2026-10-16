@@ -15,8 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/felixn678/agent-mesh/internal/client"
 	"github.com/felixn678/agent-mesh/internal/config"
 )
@@ -54,15 +52,8 @@ func SessionHubURL() string {
 	if err != nil {
 		return DefaultHubURL
 	}
-	for _, name := range []string{"client.toml", "daemon.toml"} {
-		var c struct {
-			HubURL string `toml:"hub_url"`
-		}
-		if _, err := toml.DecodeFile(filepath.Join(dir, name), &c); err == nil && c.HubURL != "" {
-			return c.HubURL
-		}
-	}
-	return DefaultHubURL
+	u, _ := config.SessionHubURL(dir)
+	return u
 }
 
 // File returns <config-dir>/name.

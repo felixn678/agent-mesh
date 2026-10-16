@@ -76,6 +76,7 @@ func TestPermissionMatrix(t *testing.T) {
 		{"GET", "/api/v1/tasks/1", A | H | S},
 		{"GET", "/api/v1/hosts", A | H | S},
 		{"GET", "/api/v1/report", A | H | S},
+		{"GET", "/api/v1/whoami", A | H | S},
 		{"POST", "/api/v1/tasks/1/cancel", A},
 		{"POST", "/api/v1/tasks/1/requeue", A},
 		{"POST", "/api/v1/claim", H},
