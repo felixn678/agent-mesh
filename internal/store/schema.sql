@@ -1,4 +1,4 @@
--- Schema version 4 (older databases gain the columns marked "v2"/"v3" via ALTER and the v4 trigger, see db.go). Statements are idempotent so concurrent first opens are safe.
+-- Schema version 5 (older databases gain later columns via ALTER and the v4 trigger, see db.go upgrades). Statements are idempotent so concurrent first opens are safe.
 CREATE TABLE IF NOT EXISTS tasks (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,  -- ids never reused (branch names embed id)
   repo             TEXT NOT NULL,                 -- logical key; host maps to clone URL
@@ -29,12 +29,15 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_by_session TEXT,                        -- v2: gets a hub message when the task ends
   summary          TEXT,                          -- v2: worker result text
   claim_request_id TEXT,                          -- v3: holder's request id of the current claim (retry replay)
+  request_id       TEXT,                          -- v5: creator's request id of the add (retry replay)
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL,
   finished_at      INTEGER
 );
 CREATE INDEX IF NOT EXISTS tasks_claim ON tasks(state, id);
 CREATE INDEX IF NOT EXISTS tasks_updated ON tasks(updated_at);
+-- v5: idempotent task add; one request id per creating principal.
+CREATE UNIQUE INDEX IF NOT EXISTS tasks_request_id ON tasks(created_by, request_id) WHERE request_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS hosts (
   name             TEXT PRIMARY KEY,

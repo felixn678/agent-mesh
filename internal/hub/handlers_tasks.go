@@ -15,12 +15,16 @@ func (s *Server) addTask(w http.ResponseWriter, r *http.Request, p api.Principal
 	if !decode(w, r, &spec) {
 		return
 	}
-	t, err := s.st.AddTask(r.Context(), spec, p)
+	t, replayed, err := s.st.AddTaskReplay(r.Context(), spec, p)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, t)
+	status := http.StatusCreated
+	if replayed {
+		status = http.StatusOK // retry of an add that already landed
+	}
+	writeJSON(w, status, t)
 }
 
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {

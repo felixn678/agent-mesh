@@ -134,8 +134,8 @@ func (s *Server) reapLoop(ctx context.Context) {
 			res, err := s.st.Reap(ctx)
 			if err != nil && ctx.Err() == nil {
 				s.log.Error("reaper", "err", err)
-			} else if res.Stuck+res.Requeued > 0 {
-				s.log.Info("reaper", "stuck", res.Stuck, "requeued", res.Requeued)
+			} else if res.Stuck+res.Requeued+res.TargetGone > 0 {
+				s.log.Info("reaper", "stuck", res.Stuck, "requeued", res.Requeued, "target_gone", res.TargetGone)
 			}
 		}
 	}

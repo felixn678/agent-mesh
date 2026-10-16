@@ -115,3 +115,27 @@ func TestHeartbeatOnReapedTaskSaysLeaseReaped(t *testing.T) {
 		t.Fatalf("heartbeat after late complete: %v", err)
 	}
 }
+
+func TestTaskAddRetryWithRequestIDOverREST(t *testing.T) {
+	h := hubtest.Start(t)
+	body := `{"repo":"r","prompt":"p","max_budget_usd":1,"request_id":"add-7"}`
+	status1, out1 := do(t, "POST", h.URL+"/api/v1/tasks", h.SessionToken("host-a"), body)
+	status2, out2 := do(t, "POST", h.URL+"/api/v1/tasks", h.SessionToken("host-a"), body)
+	if status1 != 201 || status2 != 200 || out1 != out2 {
+		t.Fatalf("first %d %s; retry %d %s", status1, out1, status2, out2)
+	}
+	conflict, _ := do(t, "POST", h.URL+"/api/v1/tasks", h.SessionToken("host-a"),
+		`{"repo":"r","prompt":"other","max_budget_usd":1,"request_id":"add-7"}`)
+	if conflict != 409 {
+		t.Fatalf("reused id for other work: %d", conflict)
+	}
+	tasks, err := h.Admin().ListTasks(bg, "", time.Time{})
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("tasks %d %v", len(tasks), err)
+	}
+	// The client helper carries the id too.
+	task, err := h.Session("host-a").AddTask(bg, api.TaskSpec{Repo: "r", Prompt: "p", MaxBudgetUSD: 1, RequestID: "add-7"})
+	if err != nil || task.RequestID != "add-7" || len(tasks) != 1 || task.ID != tasks[0].ID {
+		t.Fatalf("client replay: %+v %v", task, err)
+	}
+}

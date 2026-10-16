@@ -23,7 +23,7 @@ const taskCols = `id, repo, base_branch, prompt, permission_mode, tool_profile, 
  COALESCE(pr_url,''), COALESCE(session_id,''), COALESCE(worktree,''), cost_usd,
  COALESCE(publish_note,''), COALESCE(reason,''), COALESCE(created_by,''),
  created_at, updated_at, COALESCE(finished_at,0), COALESCE(target_host,''),
- COALESCE(target_session,''), COALESCE(created_by_session,''), COALESCE(summary,'')`
+ COALESCE(target_session,''), COALESCE(created_by_session,''), COALESCE(summary,''), COALESCE(request_id,'')`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -33,7 +33,7 @@ func scanTask(r scanner) (api.Task, error) {
 		&t.MaxBudgetUSD, &t.Host, &t.State, &t.ClaimedBy, &t.Fence, &t.Attempts, &t.MaxAttempts,
 		&t.LeaseExpiresAt, &t.LastHeartbeat, &t.Branch, &t.PRURL, &t.SessionID, &t.Worktree,
 		&t.CostUSD, &t.PublishNote, &t.Reason, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.FinishedAt,
-		&t.TargetHost, &t.TargetSession, &t.CreatedBySession, &t.Summary)
+		&t.TargetHost, &t.TargetSession, &t.CreatedBySession, &t.Summary, &t.RequestID)
 	return t, err
 }
 
@@ -46,29 +46,58 @@ func nullable(s string) any {
 
 // Add validates the spec and enqueues it.
 func (s *Store) Add(ctx context.Context, spec api.TaskSpec, createdBy string) (api.Task, error) {
+	t, _, err := s.add(ctx, spec, createdBy)
+	return t, err
+}
+
+// add inserts the task; with a request id already used by createdBy it
+// returns that earlier task and replayed=true instead (the insert and the
+// duplicate check are one statement). Reusing an id for a different repo or
+// prompt is a conflict.
+func (s *Store) add(ctx context.Context, spec api.TaskSpec, createdBy string) (t api.Task, replayed bool, err error) {
 	spec = spec.WithDefaults()
 	if err := spec.Validate(); err != nil {
-		return api.Task{}, err
+		return api.Task{}, false, err
 	}
 	repo, err := api.CanonicalRepo(spec.Repo)
 	if err != nil {
-		return api.Task{}, err
+		return api.Task{}, false, err
 	}
 	spec.Repo = repo
 	now := s.ms()
 	row := s.db.QueryRowContext(ctx, `INSERT INTO tasks
 	  (repo, base_branch, prompt, permission_mode, tool_profile, max_budget_usd, host, max_attempts,
-	   created_by, created_at, updated_at, target_host, target_session, created_by_session)
-	  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING `+taskCols,
+	   created_by, created_at, updated_at, target_host, target_session, created_by_session, request_id)
+	  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	  ON CONFLICT(created_by, request_id) WHERE request_id IS NOT NULL DO NOTHING
+	  RETURNING `+taskCols,
 		spec.Repo, spec.BaseBranch, spec.Prompt, spec.PermissionMode, spec.ToolProfile,
 		spec.MaxBudgetUSD, nullable(spec.Host), spec.MaxAttempts, nullable(createdBy), now, now,
-		nullable(spec.TargetHost), nullable(spec.TargetSession), nullable(spec.CreatedBySession))
-	t, err := scanTask(row)
+		nullable(spec.TargetHost), nullable(spec.TargetSession), nullable(spec.CreatedBySession),
+		nullable(spec.RequestID))
+	t, err = scanTask(row)
+	if errors.Is(err, sql.ErrNoRows) && spec.RequestID != "" {
+		return s.replayAdd(ctx, spec, createdBy)
+	}
 	if err != nil {
-		return api.Task{}, fmt.Errorf("insert task: %w", err)
+		return api.Task{}, false, fmt.Errorf("insert task: %w", err)
 	}
 	s.notify.signalAll() // idle sessions waiting for claimable work
-	return t, nil
+	return t, false, nil
+}
+
+// replayAdd returns the task an earlier add with the same request id made.
+func (s *Store) replayAdd(ctx context.Context, spec api.TaskSpec, createdBy string) (api.Task, bool, error) {
+	t, err := scanTask(s.db.QueryRowContext(ctx, "SELECT "+taskCols+" FROM tasks WHERE created_by=? AND request_id=?",
+		createdBy, spec.RequestID))
+	if err != nil {
+		return api.Task{}, false, fmt.Errorf("replay task add: %w", err)
+	}
+	if t.Repo != spec.Repo || t.Prompt != spec.Prompt {
+		return api.Task{}, false, fmt.Errorf("%w: request_id %q was already used for task #%d with a different repo or prompt",
+			ErrConflict, spec.RequestID, t.ID)
+	}
+	return t, true, nil
 }
 
 // Get returns one task or ErrNotFound.

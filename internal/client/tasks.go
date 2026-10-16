@@ -13,6 +13,8 @@ import (
 // Admin and read calls: tasks, hosts, identity and the report.
 
 // AddTask enqueues a task.
+// Set spec.RequestID (and reuse it on retry) to make the add idempotent: a
+// retry after a lost response returns the task the first attempt created.
 func (c *Client) AddTask(ctx context.Context, spec api.TaskSpec) (api.Task, error) {
 	var t api.Task
 	_, err := c.do(ctx, http.MethodPost, "/api/v1/tasks", spec, &t)
