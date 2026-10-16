@@ -16,8 +16,14 @@ import (
 )
 
 func runTask(ctx context.Context, std cmdIO, args []string) error {
+	const usage = "usage: agent-mesh task add|list|get|cancel|requeue [flags] (task <cmd> -h for flags)"
 	if len(args) == 0 {
-		return errors.New("usage: task add|list|get|cancel|requeue")
+		return errors.New(usage)
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		fmt.Fprintln(std.out, usage)
+		return nil
 	}
 	newClient := cliClient
 	if args[0] == "cancel" || args[0] == "requeue" {

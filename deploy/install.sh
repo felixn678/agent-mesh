@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install agent-mesh for the current user. Usage: deploy/install.sh <hub|daemon|both> [binary]
-# Touches only ~/.local/bin, ~/.config/agent-mesh, ~/.local/share/agent-mesh,
-# ~/.config/systemd/user/agent-mesh-* (Linux) and ~/Library/LaunchAgents (macOS).
+# Touches only ~/.local/bin, the agent-mesh config dir (~/.config/agent-mesh on
+# Linux, ~/Library/Application Support/agent-mesh on macOS: the binary's
+# default), ~/.local/share/agent-mesh, ~/.config/systemd/user/agent-mesh-*
+# (Linux) and ~/Library/LaunchAgents + ~/Library/Logs/agent-mesh (macOS).
 # Never touches ~/.claude*, never creates or copies secrets, never starts services.
 set -euo pipefail
 
@@ -24,7 +26,11 @@ if [ "$role" != daemon ] && [ "$os" != Linux ]; then
 fi
 
 bin_dir="$HOME/.local/bin"
-cfg_dir="$HOME/.config/agent-mesh"
+if [ "$os" = Darwin ]; then
+  cfg_dir="$HOME/Library/Application Support/agent-mesh"
+else
+  cfg_dir="$HOME/.config/agent-mesh"
+fi
 data_dir="$HOME/.local/share/agent-mesh"
 umask 077
 mkdir -p "$bin_dir" "$cfg_dir" "$data_dir"
@@ -63,11 +69,11 @@ cat <<NEXT
 
 Installed to $bin_dir/agent-mesh. Nothing was started. Next, manually:
   1. Create tokens (0600, kept out of the repo) and paste the printed hash lines into hub.toml:
-       agent-mesh token new --admin --out $cfg_dir/admin.token
-       agent-mesh token new --host <host-name> --out $cfg_dir/host.token
-       agent-mesh token new --session <host-name> --out $cfg_dir/session.token
-  2. Create $cfg_dir/gh.env (chmod 600) containing GH_TOKEN=<fine-grained PAT>.
-  3. Edit $cfg_dir/*.toml: replace every <placeholder>.
+       agent-mesh token new --admin --out "$cfg_dir/admin.token"
+       agent-mesh token new --host <host-name> --out "$cfg_dir/host.token"
+       agent-mesh token new --session <host-name> --out "$cfg_dir/session.token"
+  2. Create "$cfg_dir/gh.env" (chmod 600) containing GH_TOKEN=<fine-grained PAT>.
+  3. Edit "$cfg_dir"/*.toml: replace every <placeholder>.
 NEXT
 if [ "$os" = Linux ]; then
   units=""

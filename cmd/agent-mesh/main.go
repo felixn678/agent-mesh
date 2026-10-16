@@ -28,7 +28,7 @@ commands:
   task     add/list/show/cancel/requeue tasks
   hosts    show hosts and their load
   inbox    wait for session messages (background waiter)
-  hook     Claude Code hook entry point (session-start|prompt|stop|session-end)
+  hook     Claude Code hook entry point (session-start|prompt|stop|session-end|mcp-headers)
   setup-claude  opt-in install of the agentmesh MCP server and hooks for Claude Code
   report   print the morning report
   token    generate tokens (token new --admin | --host <name> | --session <name> --out <file>)

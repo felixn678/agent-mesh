@@ -58,6 +58,9 @@ func toolChecks(ctx context.Context, e *Env) []Result {
 
 func firstLine(b []byte) string {
 	s, _, _ := strings.Cut(strings.TrimSpace(string(b)), "\n")
+	if s == "{" { // JSON status output (claude auth status when logged out)
+		return "not logged in"
+	}
 	return s
 }
 
