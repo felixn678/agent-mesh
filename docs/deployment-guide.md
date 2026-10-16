@@ -4,7 +4,7 @@ All names in angle brackets are placeholders. Never commit real values.
 
 ## Prerequisites (per host)
 
-git, gh, claude (logged in), gitleaks (`go install github.com/zricethezav/gitleaks/v8@<pinned>` or a release binary). Build artifacts: `make cross` writes `dist/agent-mesh-{linux-amd64,darwin-arm64,darwin-amd64}`.
+git, gh, claude (logged in), gitleaks (`go install github.com/zricethezav/gitleaks/v8@<pinned>` or a release binary). Binary: the one-line installer or `go install` (see README "Install"), or build here: `make cross` writes `dist/agent-mesh-{linux-amd64,linux-arm64,darwin-arm64,darwin-amd64}`.
 
 ## Fast path: `up`, `invite`, `join`, `doctor`
 

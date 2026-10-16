@@ -2,6 +2,24 @@
 
 Coordinate many Claude Code sessions across your machines.
 
+## Install
+
+Linux or macOS (amd64/arm64), no sudo:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/felixn678/agent-mesh/main/scripts/install.sh | sh
+```
+
+The script downloads the latest release archive for your OS and CPU, checks it against the release's `SHA256SUMS`, and installs `agent-mesh` to `~/.local/bin` (it tells you if that is not on your PATH). Pin a version with `AGENTMESH_VERSION=v0.1.0`, pick another directory with `AGENTMESH_INSTALL_DIR`. Read the script first if you like: [scripts/install.sh](scripts/install.sh).
+
+With Go installed instead:
+
+```sh
+go install github.com/felixn678/agent-mesh/cmd/agent-mesh@latest
+```
+
+Check with `agent-mesh version`, then follow [Quick start](#quick-start): `agent-mesh up` on the hub machine, or `agent-mesh join ...` (from `agent-mesh invite` on the hub) on the others, then `agent-mesh setup-claude` and `agent-mesh doctor`.
+
 ## What it is for
 
 Each machine runs 10-15 interactive Claude sessions across 2-3 projects, and every project is cloned on both machines. With agent-mesh:
@@ -29,7 +47,7 @@ No remote exec, no SSH in code, no TLS or mDNS code, no tmux, no hub HA, no task
 
 ## Quick start
 
-Prereqs: git, gh, claude, gitleaks (`agent-mesh doctor` tells you what is missing). Build with `make build` (or `make cross`) and put `agent-mesh` on your PATH.
+Prereqs: git, gh, claude, gitleaks (`agent-mesh doctor` tells you what is missing). Install as above, or build from a checkout with `make build`.
 
 On the hub machine:
 
@@ -112,4 +130,6 @@ Ubuntu hub only in v1 (no hub when that machine is off; daemons back off and lea
 
 ## Development
 
-`make build test vet cross lint-secrets clean`. Binaries land in `bin/` and `dist/`.
+`make build test vet cross release lint-secrets clean`. Binaries land in `bin/` and `dist/`; `make release` writes the release archives and `SHA256SUMS` to `dist/release/`.
+
+Releases: pushing a `v*` tag runs `.github/workflows/release.yml` (vet, race tests, `scripts/build-release.sh`, `gh release create`). CI (`ci.yml`) runs vet, race tests on Linux and macOS, the cross-build, shellcheck and gitleaks on every push and PR to `main`.

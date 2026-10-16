@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  cross-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Build release archives (linux/darwin, amd64/arm64, CGO_ENABLED=0)
+        run: scripts/build-release.sh "ci-${GITHUB_SHA::12}" dist
+      - name: Stamped version
+        run: tar -xzOf dist/agent-mesh-linux-amd64.tar.gz agent-mesh > /tmp/agent-mesh && chmod +x /tmp/agent-mesh && /tmp/agent-mesh version
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: shellcheck (preinstalled on ubuntu runners)
+        run: shellcheck scripts/*.sh
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0 # scan the whole history
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Install gitleaks (pinned)
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+      - name: Scan for secrets
+        run: $(go env GOPATH)/bin/gitleaks detect --source . --no-banner --redact
