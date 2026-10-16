@@ -5,7 +5,9 @@ package hubtest
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net"
+	"net/http"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -131,7 +133,31 @@ func (h *Hub) boot(addr string) error {
 	h.cancel, h.done = cancel, make(chan error, 1)
 	srv := hub.NewServer(h.Config, h.Store)
 	go func() { h.done <- srv.Serve(ctx, ln) }()
-	return nil
+	return h.waitServing()
+}
+
+// waitServing blocks until the hub answers /healthz. Serve runs the startup
+// grace before it serves HTTP; without this wait a test that stops the hub
+// right away cancels the grace and Stop reports a spurious error.
+func (h *Hub) waitServing() error {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err := http.Get(h.URL + "/healthz")
+		if err == nil {
+			resp.Body.Close()
+			return nil
+		}
+		select {
+		case err := <-h.done: // Serve failed before serving
+			h.done <- err
+			return fmt.Errorf("serve exited during startup: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("hub not serving after 5s: %w", err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // Stop shuts the hub down and closes its database. Safe to call twice.

@@ -3,25 +3,14 @@ package onboard
 import (
 	"context"
 	"fmt"
-	"github.com/BurntSushi/toml"
-	"os"
+	"github.com/felixn678/agent-mesh/internal/cli/hubenv"
 	"strings"
 	"time"
 )
 
-// hubURLFor resolves the hub URL like the CLI: $AGENTMESH_URL, else
-// client.toml, else daemon.toml, else the loopback default.
-func hubURLFor(e *Env) (url, source string) {
-	if u := os.Getenv("AGENTMESH_URL"); u != "" {
-		return u, "$AGENTMESH_URL"
-	}
-	for _, n := range []string{"client.toml", "daemon.toml"} {
-		if u := readHubURL(e.Path(n)); u != "" {
-			return u, n
-		}
-	}
-	return "http://" + defaultListen, "default"
-}
+// hubURLFor resolves the hub URL exactly like the CLI (hubenv), against
+// this Env's config dir.
+func hubURLFor(e *Env) (url, source string) { return hubenv.HubURLIn(e.ConfigDir) }
 
 func hubReachable(ctx context.Context, url, src string) Result {
 	name := "hub reachable"
@@ -102,16 +91,4 @@ func tailscaleCheck(ctx context.Context, e *Env) Result {
 		return Result{"tailscale", Pass, "tailnet address " + ip, ""}
 	}
 	return Result{"tailscale", Warn, "installed but not connected", "tailscale up"}
-}
-
-// readHubURL extracts hub_url from a TOML file, tolerating other keys (the
-// daemon validates its own file); "" when absent or unreadable.
-func readHubURL(path string) string {
-	var c struct {
-		HubURL string `toml:"hub_url"`
-	}
-	if _, err := toml.DecodeFile(path, &c); err != nil {
-		return ""
-	}
-	return c.HubURL
 }

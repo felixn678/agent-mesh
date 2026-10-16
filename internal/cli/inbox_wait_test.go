@@ -60,7 +60,8 @@ func TestWaiterWakesOnMessageWithinASecond(t *testing.T) {
 	peer(t, h, "wake up")
 	select {
 	case r := <-done:
-		if r.err != nil || !strings.Contains(r.out, "> wake up") || !strings.Contains(r.out, "restart the waiter") {
+		if r.err != nil || !strings.Contains(r.out, "1 unread message(s) from host-b/peer-000") ||
+			strings.Contains(r.out, "wake up") || !strings.Contains(r.out, "restart the waiter") {
 			t.Fatalf("%q %v", r.out, r.err)
 		}
 		if d := r.at.Sub(sent); d > time.Second {
@@ -72,8 +73,25 @@ func TestWaiterWakesOnMessageWithinASecond(t *testing.T) {
 	if waiterAlive(waitersDir(), fixtureSession) {
 		t.Fatal("pid file left behind")
 	}
-	if unreadCount(t, h) != 0 {
-		t.Fatal("delivered message still unread")
+	// The waiter only announces: the message stays unread until the prompt
+	// hook of the wake-up turn shows and acks it.
+	if unreadCount(t, h) != 1 {
+		t.Fatal("waiter must not ack")
+	}
+	// Restarted before the hook ran: the same message does not wake it again.
+	again, _ := startWaiter(t, bg, waitOpts{maxDur: 2 * time.Second, poll: time.Second, backoffMin: time.Millisecond, backoffMax: time.Millisecond, cooldownPoll: 100 * time.Millisecond})
+	if r := <-again; r.err != nil || !strings.Contains(r.out, "no messages in 2s") {
+		t.Fatalf("re-woke for an announced message: %q %v", r.out, r.err)
+	}
+	if ho, _ := hook(t, "prompt", "hook_prompt.json"); !strings.Contains(ho.HookSpecificOutput.AdditionalContext, "> wake up") || unreadCount(t, h) != 0 {
+		t.Fatalf("prompt hook must deliver and ack: %+v", ho)
+	}
+	// A newer message wakes it again.
+	done, _ = startWaiter(t, bg, fastWait)
+	waitFor(t, func() bool { return waiterAlive(waitersDir(), fixtureSession) })
+	peer(t, h, "second")
+	if r := <-done; !strings.Contains(r.out, "1 unread message(s)") {
+		t.Fatalf("newer message: %q %v", r.out, r.err)
 	}
 }
 
@@ -93,7 +111,7 @@ func TestWaiterSurvivesHubRestart(t *testing.T) {
 	peer(t, h, "back online")
 	select {
 	case r := <-done:
-		if r.err != nil || !strings.Contains(r.out, "> back online") {
+		if r.err != nil || !strings.Contains(r.out, "unread message(s) from host-b") {
 			t.Fatalf("%q %v", r.out, r.err)
 		}
 	case <-time.After(5 * time.Second):
@@ -121,7 +139,7 @@ func TestWaiterSingletonAndStalePID(t *testing.T) {
 		t.Fatalf("second waiter: %q %v", out, err)
 	}
 	cancel()
-	if r := <-done; r.err != nil || r.out != "" {
+	if r := <-done; r.err != nil || !strings.Contains(r.out, "waiter stopped by a signal") {
 		t.Fatalf("cancelled waiter: %q %v", r.out, r.err)
 	}
 }

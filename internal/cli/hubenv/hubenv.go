@@ -29,30 +29,37 @@ const (
 	SessionTokenFile = "session.token"
 )
 
-// HubURL resolves the hub base URL.
+// HubURL resolves the hub base URL against the default config dir.
 func HubURL() string {
+	dir, _ := config.DefaultDir() // "" only makes the file lookups miss
+	u, _ := HubURLIn(dir)
+	return u
+}
+
+// HubURLIn resolves the hub URL with configDir as the config dir and says
+// where it came from ("$AGENTMESH_URL", a file name, or "default").
+func HubURLIn(configDir string) (url, source string) {
 	if u := os.Getenv("AGENTMESH_URL"); u != "" {
-		return u
+		return u, "$AGENTMESH_URL"
 	}
 	for _, name := range []string{"client.toml", "daemon.toml"} {
-		if u := readHubURL(name); u != "" {
-			return u
+		if configDir == "" {
+			break
+		}
+		if u := readHubURL(filepath.Join(configDir, name)); u != "" {
+			return u, name
 		}
 	}
-	return DefaultHubURL
+	return DefaultHubURL, "default"
 }
 
 // readHubURL reads only hub_url, tolerating other keys (the daemon and the
 // onboarding commands own those files' schemas).
-func readHubURL(name string) string {
-	p, err := File(name)
-	if err != nil {
-		return ""
-	}
+func readHubURL(path string) string {
 	var c struct {
 		HubURL string `toml:"hub_url"`
 	}
-	if _, err := toml.DecodeFile(p, &c); err != nil {
+	if _, err := toml.DecodeFile(path, &c); err != nil {
 		return ""
 	}
 	return c.HubURL
