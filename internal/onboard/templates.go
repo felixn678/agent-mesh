@@ -58,8 +58,10 @@ claude_env_file = ""                      # optional 0600 file: CLAUDE_CODE_OAUT
 gh_env_file = %q   # 0600: GH_TOKEN=<fine-grained PAT>
 gitleaks_bin = "gitleaks"
 
-[repos]                                   # allowlist: task repo name -> remote URL
-# "<repo>" = "https://github.com/<user>/<repo>.git"
+# Allowlist: repo key -> remote URL the daemon clones. Use the canonical key
+# "github.com/<user>/<repo>": tasks added from Claude sessions carry it.
+[repos]
+# "github.com/<user>/<repo>" = "https://github.com/<user>/<repo>.git"
 
 [tool_profiles.default]
 allow = ["Read", "Edit", "Write", "Glob", "Grep",

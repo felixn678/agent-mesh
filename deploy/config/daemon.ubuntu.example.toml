@@ -1,6 +1,6 @@
 # ~/.config/agent-mesh/daemon.toml  (mode 0600). Placeholders only.
 hub_url = "http://127.0.0.1:8787"
-host_token_file = "~/.config/agent-mesh/host.token"
+# host_token_file = "<config-dir>/host.token"   # default: host.token next to this file
 state_dir = "~/.local/share/agent-mesh"   # repos/ worktrees/ logs/ spool/ run/
 
 poll_interval = "30s"
@@ -20,11 +20,16 @@ max_budget_usd_cap = 5.0
 worker_setting_sources = "project"
 claude_bin = "claude"
 claude_env_file = ""                      # optional 0600 file: CLAUDE_CODE_OAUTH_TOKEN=...
-gh_env_file = "~/.config/agent-mesh/gh.env"   # 0600: GH_TOKEN=<fine-grained PAT>
+# gh_env_file = "<config-dir>/gh.env"   # default: gh.env next to this file (0600: GH_TOKEN=<fine-grained PAT>); missing = use gh's own login
 gitleaks_bin = "gitleaks"
 
-[repos]                                   # allowlist: task repo name -> remote URL
-"<repo>" = "https://github.com/<user>/<repo>.git"
+# Allowlist: repo key -> remote URL the daemon clones (into state_dir/repos).
+# Keys are matched in canonical form: tasks added from a Claude session use
+# the session's normalized git remote ("github.com/<user>/<repo>"), so use that
+# (or the remote URL itself) as the key. A short key like "<repo>" only
+# matches tasks added with --repo <repo>.
+[repos]
+"github.com/<user>/<repo>" = "https://github.com/<user>/<repo>.git"
 
 [tool_profiles.default]
 allow = ["Read", "Edit", "Write", "Glob", "Grep",
