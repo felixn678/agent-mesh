@@ -101,7 +101,7 @@ func TestSystemdInstallIsIdempotent(t *testing.T) {
 }
 
 func TestRenderPlist(t *testing.T) {
-	p := renderPlist("/Users/x", "/Users/x/bin/agent-mesh", "/p", Unit{Name: "daemon", Args: []string{"daemon"}}, "com.agentmesh.daemon")
+	p := renderPlist("/Users/x", "/Users/x/bin/agent-mesh", "/p", "", Unit{Name: "daemon", Args: []string{"daemon"}}, "com.agentmesh.daemon")
 	for _, want := range []string{"<string>com.agentmesh.daemon</string>", "<string>/Users/x/bin/agent-mesh</string>", "<integer>63</integer>", "<key>KeepAlive</key>"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("plist lacks %s", want)

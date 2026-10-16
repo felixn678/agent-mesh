@@ -25,6 +25,7 @@ func testEnv(t *testing.T, h *hubtest.Hub) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AGENTMESH_CONFIG_DIR", filepath.Join(filepath.Join(home, ".config"), "agent-mesh")) // macOS ignores XDG_CONFIG_HOME
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("AGENTMESH_TOKEN", "")

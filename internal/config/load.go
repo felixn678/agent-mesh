@@ -31,11 +31,22 @@ func LoadTOML(path string, v any) error {
 	return nil
 }
 
-// DefaultDir is the per-user config directory: ~/.config/agent-mesh on Linux
-// ($XDG_CONFIG_HOME honoured), ~/Library/Application Support/agent-mesh on
-// macOS (os.UserConfigDir). Note the space in the macOS path: never build
-// shell strings from it.
+// ConfigDirEnv overrides the config directory on every OS (an absolute
+// path). It selects another identity on the same machine and lets tests
+// isolate config portably: macOS ignores $XDG_CONFIG_HOME.
+const ConfigDirEnv = "AGENTMESH_CONFIG_DIR"
+
+// DefaultDir is the per-user config directory: $AGENTMESH_CONFIG_DIR when
+// set, else ~/.config/agent-mesh on Linux ($XDG_CONFIG_HOME honoured) and
+// ~/Library/Application Support/agent-mesh on macOS (os.UserConfigDir). Note
+// the space in the macOS path: never build shell strings from it.
 func DefaultDir() (string, error) {
+	if d := os.Getenv(ConfigDirEnv); d != "" {
+		if !filepath.IsAbs(d) {
+			return "", fmt.Errorf("%s must be an absolute path, got %q", ConfigDirEnv, d)
+		}
+		return filepath.Clean(d), nil
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("locate config dir: %w", err)

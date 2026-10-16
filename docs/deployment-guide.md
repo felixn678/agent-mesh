@@ -94,6 +94,8 @@ Where things live (note the space in the config path: quote it in shell commands
 | Service definitions | `~/Library/LaunchAgents/com.agentmesh.daemon.plist` (and `com.agentmesh.hub.plist` if the hub runs on the Mac) |
 | Service logs | `~/Library/Logs/agent-mesh/daemon.log`, `hub.log` (written by the process, rotated at 10 MB, 3 old files kept); `*.stderr.log` holds only startup failures |
 
+To use another directory (on any OS), set `AGENTMESH_CONFIG_DIR` to an absolute path before `up`/`join` and export it in your shell profile; the installed services get it in their environment.
+
 Things that differ from Linux:
 
 - **Services need a desktop login.** LaunchAgents run in your `gui/<uid>` launchd domain, which exists only while you are logged in to the Mac (it keeps running with the screen locked). `up`/`join` over a plain SSH session fail with a clear message; log in on the Mac once, or pass `--no-service`. Services start at login, not at boot.

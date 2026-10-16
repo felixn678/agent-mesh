@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/felixn678/agent-mesh/internal/config"
 )
 
 // launchdManager manages LaunchAgents labelled com.agentmesh.<name>.
@@ -35,13 +37,18 @@ func (m *launchdManager) ctl(ctx context.Context, args ...string) error {
 // launchd never rotates StandardOutPath, so the process writes its own
 // size-capped log (--log-file, 10 MB x 3) and stdout/stderr only catch
 // startup failures (trimmed by the process when they grow past 1 MB).
-func renderPlist(home, bin, path string, u Unit, label string) string {
+// cfgDir, when set, is passed on as AGENTMESH_CONFIG_DIR (see Env.ConfigDirOverride).
+func renderPlist(home, bin, path, cfgDir string, u Unit, label string) string {
 	logDir := filepath.Join(home, "Library", "Logs", "agent-mesh")
 	var args strings.Builder
 	for _, a := range append(append([]string{bin}, u.Args...), "--log-file", filepath.Join(logDir, u.Name+".log")) {
 		fmt.Fprintf(&args, "    <string>%s</string>\n", html.EscapeString(a))
 	}
 	log := html.EscapeString(filepath.Join(logDir, u.Name+".stderr.log"))
+	cfgEnv := ""
+	if cfgDir != "" {
+		cfgEnv = fmt.Sprintf("    <key>%s</key>\n    <string>%s</string>\n", config.ConfigDirEnv, html.EscapeString(cfgDir))
+	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -55,7 +62,7 @@ func renderPlist(home, bin, path string, u Unit, label string) string {
   <dict>
     <key>PATH</key>
     <string>%s</string>
-  </dict>
+%s  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -70,7 +77,7 @@ func renderPlist(home, bin, path string, u Unit, label string) string {
   <string>%s</string>
 </dict>
 </plist>
-`, label, args.String(), html.EscapeString(path), log, log)
+`, label, args.String(), html.EscapeString(path), cfgEnv, log, log)
 }
 
 // launchdRetryDelay spaces bootstrap retries: launchd finishes a bootout
@@ -102,7 +109,7 @@ func (m *launchdManager) Install(ctx context.Context, u Unit) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	want := []byte(renderPlist(m.e.Home, m.e.Binary, m.e.servicePath(), u, m.label(u.Name)))
+	want := []byte(renderPlist(m.e.Home, m.e.Binary, m.e.servicePath(), m.e.ConfigDirOverride, u, m.label(u.Name)))
 	cur, _ := os.ReadFile(path)
 	changed := !bytes.Equal(cur, want)
 	if changed {

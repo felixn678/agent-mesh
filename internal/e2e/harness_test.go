@@ -64,7 +64,7 @@ func newMachine(t *testing.T, bin, path string) *machine {
 	home := t.TempDir()
 	cfg := filepath.Join(home, ".config")
 	return &machine{t: t, bin: bin, cfg: filepath.Join(cfg, "agent-mesh"),
-		env: []string{"HOME=" + home, "XDG_CONFIG_HOME=" + cfg, "PATH=" + path, "TMPDIR=" + os.TempDir()}}
+		env: []string{"HOME=" + home, "XDG_CONFIG_HOME=" + cfg, "AGENTMESH_CONFIG_DIR=" + filepath.Join(cfg, "agent-mesh"), "PATH=" + path, "TMPDIR=" + os.TempDir()}}
 }
 
 func (m *machine) command(ctx context.Context, args ...string) *exec.Cmd {

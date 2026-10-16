@@ -47,7 +47,7 @@ func newMachine(t *testing.T, bin string) *machine {
 	home := t.TempDir()
 	xdg := filepath.Join(home, ".config")
 	return &machine{t: t, bin: bin, home: home, cfg: filepath.Join(xdg, "agent-mesh"),
-		env: []string{"HOME=" + home, "XDG_CONFIG_HOME=" + xdg, "PATH=/usr/bin:/bin", "TMPDIR=" + os.TempDir()}}
+		env: []string{"HOME=" + home, "XDG_CONFIG_HOME=" + xdg, "AGENTMESH_CONFIG_DIR=" + filepath.Join(xdg, "agent-mesh"), "PATH=/usr/bin:/bin", "TMPDIR=" + os.TempDir()}}
 }
 
 func (m *machine) run(args ...string) string {

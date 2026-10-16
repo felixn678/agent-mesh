@@ -38,6 +38,7 @@ func TestRunReadsAdminTokenFile(t *testing.T) {
 	t.Setenv("AGENTMESH_TOKEN", "")
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	t.Setenv("AGENTMESH_CONFIG_DIR", filepath.Join(cfgHome, "agent-mesh")) // macOS ignores XDG_CONFIG_HOME
 	if err := config.WriteToken(filepath.Join(cfgHome, "agent-mesh", "admin.token"), h.AdminToken); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +102,7 @@ func TestRunOnJoinedMachineUsesClientTOMLAndSessionToken(t *testing.T) {
 	t.Setenv("AGENTMESH_TOKEN", "")
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	t.Setenv("AGENTMESH_CONFIG_DIR", filepath.Join(cfgHome, "agent-mesh")) // macOS ignores XDG_CONFIG_HOME
 	dir := filepath.Join(cfgHome, "agent-mesh")
 	if err := config.WriteToken(filepath.Join(dir, "session.token"), h.SessionToken("host-b")); err != nil {
 		t.Fatal(err)

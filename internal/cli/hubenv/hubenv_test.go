@@ -12,6 +12,7 @@ func setup(t *testing.T) string {
 	t.Helper()
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv("AGENTMESH_CONFIG_DIR", filepath.Join(cfg, "agent-mesh")) // macOS ignores XDG_CONFIG_HOME
 	for _, k := range []string{"AGENTMESH_URL", "AGENTMESH_TOKEN", "AGENTMESH_SESSION_TOKEN"} {
 		t.Setenv(k, "")
 	}

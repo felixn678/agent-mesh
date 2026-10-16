@@ -77,7 +77,7 @@ func (m *fakeMgr) Install(ctx context.Context, u Unit) error {
 	hctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- hub.Run(hctx, []string{"--config", filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "agent-mesh", "hub.toml")})
+		done <- hub.Run(hctx, []string{"--config", filepath.Join(os.Getenv("AGENTMESH_CONFIG_DIR"), "hub.toml")})
 	}()
 	m.t.Cleanup(func() {
 		cancel()
@@ -125,6 +125,7 @@ func useHome(t *testing.T, e *Env) {
 	t.Helper()
 	t.Setenv("HOME", e.Home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(e.Home, ".config"))
+	t.Setenv("AGENTMESH_CONFIG_DIR", e.ConfigDir) // macOS ignores XDG_CONFIG_HOME
 	t.Setenv("AGENTMESH_URL", "")
 }
 
