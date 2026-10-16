@@ -116,3 +116,32 @@ BEGIN
   INSERT INTO messages (from_session, from_host, to_session, body, created_at)
   VALUES ('hub', 'hub', NEW.created_by_session, '[agent-mesh] task #' || NEW.id || ' ' || NEW.state, NEW.updated_at);
 END`
+
+// A fourth-version database gains the task-add request id and its index.
+func TestOpenUpgradesFourthSchemaVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hub.db")
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"DROP INDEX tasks_request_id", "ALTER TABLE tasks DROP COLUMN request_id", "PRAGMA user_version = 4"} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = db.Close()
+	if db, err = store.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	st := store.New(db, nil, store.DefaultLeaseConfig())
+	spec := api.TaskSpec{Repo: "r", Prompt: "p", MaxBudgetUSD: 1, RequestID: "once"}
+	a, _, err := st.AddTaskReplay(context.Background(), spec, api.Principal{Admin: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, replayed, err := st.AddTaskReplay(context.Background(), spec, api.Principal{Admin: true})
+	if err != nil || !replayed || b.ID != a.ID {
+		t.Fatalf("replay after upgrade: %+v %v %v", b, replayed, err)
+	}
+}

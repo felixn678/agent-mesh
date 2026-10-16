@@ -29,7 +29,8 @@ Messages: session hooks register the session on start and refresh it on prompt. 
 - A claim is one SQL statement that sets owner, expiry, and increments the fence. Per-attempt resources are named by fence (branch `agentmesh/task-<id>-f<fence>`). A retried claim with the same request id returns the same task and fence instead of a second one.
 - Heartbeats extend the lease (TTL 5 min). `complete`, `fail`, `release` carry the fence; a replay with the same fence is idempotent; a stale fence returns 409 `lease_lost` and a cancelled task 409 `cancelled`. `release` gives the task back without using an attempt.
 - An expired lease can be taken by the next claim (fence+1). A heartbeat revives an expired lease that nobody took within the revive window (30 min).
-- Reaper (every minute): a task at its attempt cap whose lease expired past the revive window becomes stuck with a reason; the owner may still record a late `complete` or `fail`. Leases stale over 1 h are requeued (fence+1).
+- Reaper (every minute): a task at its attempt cap whose lease expired past the revive window becomes stuck with a reason; the owner may still record a late `complete` or `fail`. Leases stale over 1 h are requeued (fence+1). Queued tasks whose `target_session` ended or has been unseen for the session alive window (or never registered, once the task is that old) become stuck with reason `target session gone`; the creator gets the usual notice and an admin may requeue.
+- Task add takes an optional `request_id`: a retry with the same id from the same principal (`created_by`) returns the existing task (200 instead of 201); reusing the id for a different repo or prompt is a 409.
 - After a hub restart the hub listens first, then grants grace only to leases alive at `last_alive_at`, once per downtime.
 
 ## Daemon

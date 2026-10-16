@@ -55,6 +55,10 @@ type TaskSpec struct {
 	// messages it when the task completes, fails or gets stuck. The hub
 	// verifies the session belongs to the caller's host.
 	CreatedBySession string `json:"created_by_session,omitempty"`
+	// RequestID (optional, caller-generated) makes task add idempotent: a
+	// retry with the same id from the same principal returns the task the
+	// first attempt created instead of adding a duplicate.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // Task is a stored task. Nullable columns are zero values when unset.
@@ -86,6 +90,7 @@ type Task struct {
 	TargetSession    string  `json:"target_session,omitempty"`
 	CreatedBySession string  `json:"created_by_session,omitempty"`
 	Summary          string  `json:"summary,omitempty"`
+	RequestID        string  `json:"request_id,omitempty"`
 	CreatedAt        int64   `json:"created_at"`
 	UpdatedAt        int64   `json:"updated_at"`
 	FinishedAt       int64   `json:"finished_at,omitempty"`

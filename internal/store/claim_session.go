@@ -120,14 +120,21 @@ func (s *Store) ClaimableCount(ctx context.Context, id string) (int, error) {
 // creator session it must exist and belong to p's host (admin: any), so a
 // token cannot make the hub message someone else's session.
 func (s *Store) AddTask(ctx context.Context, spec api.TaskSpec, p api.Principal) (api.Task, error) {
+	t, _, err := s.AddTaskReplay(ctx, spec, p)
+	return t, err
+}
+
+// AddTaskReplay is AddTask that also reports whether spec.RequestID matched
+// a task this principal added before (returned instead of a new one).
+func (s *Store) AddTaskReplay(ctx context.Context, spec api.TaskSpec, p api.Principal) (api.Task, bool, error) {
 	if spec.CreatedBySession != "" {
 		owner := p.Host
 		if p.Admin {
 			owner = ""
 		}
 		if _, err := s.SessionHolder(ctx, owner, spec.CreatedBySession); err != nil {
-			return api.Task{}, err
+			return api.Task{}, false, err
 		}
 	}
-	return s.Add(ctx, spec, p.CreatedBy())
+	return s.add(ctx, spec, p.CreatedBy())
 }

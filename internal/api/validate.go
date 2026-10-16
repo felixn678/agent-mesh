@@ -118,7 +118,7 @@ func (s TaskSpec) Validate() error {
 	case s.MaxAttempts < 1 || s.MaxAttempts > MaxAttemptsLimit:
 		return invalid("max_attempts must be 1..%d", MaxAttemptsLimit)
 	}
-	return nil
+	return checkRequestID(s.RequestID)
 }
 
 func repoErr(s string) error {

@@ -16,6 +16,7 @@ const (
 type ReapResult struct {
 	Stuck                          int64 // expired at the attempt cap
 	Requeued                       int64 // expired longer than StaleRequeue, below the cap
+	TargetGone                     int64 // queued for a session that ended or went silent
 	SessionsPruned, MessagesPruned int64
 }
 
@@ -41,6 +42,10 @@ func (s *Store) Reap(ctx context.Context) (ReapResult, error) {
 		s.notify.signalAll() // creators of stuck tasks got a notice
 	}
 
+	if r.TargetGone, err = s.reapTargetGone(ctx, now); err != nil {
+		return r, err
+	}
+
 	// fence+1 so a zombie worker's later heartbeat/complete gets lease_lost.
 	res, err = s.db.ExecContext(ctx, `UPDATE tasks SET state='queued', fence=fence+1,
 	    reason='lease expired on '||claimed_by||'; requeued', lease_expires_at=NULL, updated_at=:now
@@ -58,6 +63,29 @@ func (s *Store) Reap(ctx context.Context) (ReapResult, error) {
 		return r, err
 	}
 	return r, nil
+}
+
+// reapTargetGone marks queued tasks stuck whose target session can no longer
+// claim them: ended, or unseen for the alive window. A target that never
+// registered (or was pruned) counts once the task itself is that old. The
+// completion trigger notifies the creator; an admin may requeue.
+func (s *Store) reapTargetGone(ctx context.Context, now int64) (int64, error) {
+	cut := now - s.cfg.sessionAlive().Milliseconds()
+	res, err := s.db.ExecContext(ctx, `UPDATE tasks SET state='stuck', reason='target session gone',
+	    finished_at=:now, updated_at=:now
+	  WHERE state='queued' AND target_session IS NOT NULL
+	    AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = tasks.target_session
+	                    AND s.ended_at IS NULL AND s.last_seen_at >= :cut)
+	    AND (EXISTS (SELECT 1 FROM sessions s WHERE s.id = tasks.target_session) OR tasks.created_at < :cut)`,
+		sql.Named("now", now), sql.Named("cut", cut))
+	if err != nil {
+		return 0, fmt.Errorf("reap target gone: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n > 0 {
+		s.notify.signalAll() // creators got a notice
+	}
+	return n, nil
 }
 
 // Grace runs once after the hub is listening. It extends leases that were
