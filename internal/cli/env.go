@@ -8,7 +8,8 @@ import (
 	"github.com/felixn678/agent-mesh/internal/client"
 )
 
-func hubURL() string { return hubenv.HubURL() }
+// sessionHubURL is where the session token may be sent (config files only).
+func sessionHubURL() string { return hubenv.SessionHubURL() }
 
 // stateDir is $XDG_STATE_HOME/agent-mesh or ~/.local/state/agent-mesh.
 func stateDir() (string, error) {
@@ -24,7 +25,13 @@ func stateDir() (string, error) {
 
 // sessionClient authenticates with the host's session token, the only token
 // hooks, the waiter and the user-scope MCP use.
-func sessionClient() (*client.Client, error) { return hubenv.Client(hubenv.SessionToken) }
+func sessionClient() (*client.Client, error) {
+	tok, err := hubenv.SessionToken()
+	if err != nil {
+		return nil, err
+	}
+	return client.New(sessionHubURL(), tok), nil
+}
 
 func readSessionToken() (string, error) { return hubenv.SessionToken() }
 

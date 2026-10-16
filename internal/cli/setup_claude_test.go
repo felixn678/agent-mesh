@@ -31,7 +31,8 @@ func setupFixture(t *testing.T) (setupEnv, string, *hubtest.Hub) {
 	home := testEnv(t, h)
 	claude, log := fakeClaude(t, t.TempDir())
 	e := setupEnv{bin: testBin, claude: claude, home: home, hubURL: h.URL,
-		settingsPath: filepath.Join(home, ".claude", "settings.json"), claudeJSON: filepath.Join(home, ".claude.json")}
+		settingsPath: filepath.Join(home, ".claude", "settings.json"), claudeJSON: filepath.Join(home, ".claude.json"),
+		statePath: filepath.Join(home, ".local", "state", "agent-mesh", "setup-claude.json")}
 	if err := os.MkdirAll(filepath.Dir(e.settingsPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +62,7 @@ func TestSetupClaudeInstallIdempotentUninstall(t *testing.T) {
 	runSetup(t, e, setupFlags{})
 	argv := readLog(t, log)
 	if !strings.Contains(argv, "mcp\nadd-json\n-s\nuser\nagentmesh\n") ||
-		!strings.Contains(argv, `"headersHelper":"'/opt/agent mesh/bin/agent-mesh' hook mcp-headers"`) ||
+		!strings.Contains(argv, `"headersHelper":"'/opt/agent mesh/bin/agent-mesh' hook mcp-headers --managed-by=agent-mesh"`) ||
 		strings.Contains(argv, "test-session-token") || strings.Contains(argv, "Bearer") {
 		t.Fatalf("claude argv:\n%s", argv)
 	}
@@ -136,7 +137,7 @@ func TestSetupClaudeSymlinkMissingInvalidAndForce(t *testing.T) {
 		t.Fatalf("target not updated: %s", b)
 	}
 	if !strings.Contains(errOut, "--force") || strings.Contains(readLog(t, log), "add-json") {
-		t.Fatalf("different server must need --force: %s / %s", errOut, readLog(t, log))
+		t.Fatalf("foreign server must need --force: %s / %s", errOut, readLog(t, log))
 	}
 	runSetup(t, e, setupFlags{force: true})
 	if argv := readLog(t, log); !strings.Contains(argv, "remove\n-s\nuser\nagentmesh\n--\nmcp\nadd-json") {
@@ -173,5 +174,31 @@ func TestSetupClaudeRequiresSessionToken(t *testing.T) {
 	}
 	if _, err := os.Stat(e.settingsPath); !os.IsNotExist(err) {
 		t.Fatal("settings written without a token")
+	}
+}
+
+func TestSetupClaudeRepairsOwnMCPAndRefusesTempBinary(t *testing.T) {
+	e, log, _ := setupFixture(t)
+	// Our entry with an old hub url and binary path: replaced without --force.
+	old := e
+	old.bin, old.hubURL = "/old/bin/agent-mesh", "http://127.0.0.1:1"
+	writeClaudeJSON(t, e, mcpConfig(old))
+	runSetup(t, e, setupFlags{})
+	if argv := readLog(t, log); !strings.Contains(argv, "remove\n-s\nuser\nagentmesh\n--\nmcp\nadd-json") || !strings.Contains(argv, e.hubURL+"/mcp") {
+		t.Fatalf("own MCP entry not repaired: %s", argv)
+	}
+	// Uninstall leaves a foreign server alone unless forced.
+	writeClaudeJSON(t, e, map[string]any{"type": "http", "url": "http://elsewhere/mcp"})
+	_ = os.Remove(log)
+	_, errOut := runSetup(t, e, setupFlags{uninstall: true})
+	if strings.Contains(readLog(t, log), "remove") || !strings.Contains(errOut, "not written by setup-claude") {
+		t.Fatalf("foreign server removed: %s / %s", readLog(t, log), errOut)
+	}
+
+	e.bin = filepath.Join(os.TempDir(), "go-build42", "exe", "agent-mesh")
+	var out syncBuf
+	err := setupClaude(bg, cmdIO{in: strings.NewReader(""), out: &out, err: &out}, e, setupFlags{})
+	if err == nil || !strings.Contains(err.Error(), "looks temporary") {
+		t.Fatalf("temp binary must be refused: %v", err)
 	}
 }

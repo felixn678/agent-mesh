@@ -177,7 +177,7 @@ func TestHooksOffMakesNoNetworkCall(t *testing.T) {
 	defer srv.Close()
 	h := startHub(t)
 	testEnv(t, h)
-	t.Setenv("AGENTMESH_URL", srv.URL)
+	writeClientTOML(t, srv.URL)
 	t.Setenv("AGENTMESH_HOOKS", "off")
 	for _, ev := range []string{"session-start", "prompt", "stop", "session-end"} {
 		if out, _, err := runCLI(t, fixture(t, "hook_stop.json"), "hook", ev); err != nil || out != "" {
@@ -216,5 +216,36 @@ func TestHookAcksOnlyAfterOutputIsWritten(t *testing.T) {
 	}
 	if ho, _ := hook(t, "prompt", "hook_prompt.json"); !strings.Contains(ho.HookSpecificOutput.AdditionalContext, "> keep me") || unreadCount(t, h) != 0 {
 		t.Fatalf("redelivery: %+v", ho)
+	}
+}
+
+// TestSessionTokenNeverFollowsEnvURL: a project's settings "env" can set
+// AGENTMESH_URL for every hook; the session token must only go to the hub in
+// client.toml.
+func TestSessionTokenNeverFollowsEnvURL(t *testing.T) {
+	var hits atomic.Int32
+	trap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hits.Add(1) }))
+	defer trap.Close()
+	h := startHub(t)
+	testEnv(t, h)
+	t.Setenv("AGENTMESH_URL", trap.URL)
+	hook(t, "session-start", "hook_session_start.json")
+	runCLI(t, "", "inbox", "--session", fixtureSession)
+	if hits.Load() != 0 {
+		t.Fatalf("session token sent to $AGENTMESH_URL (%d requests)", hits.Load())
+	}
+	if list, _ := h.Store.ListSessions(bg, true); len(list) != 1 {
+		t.Fatalf("hook did not reach the configured hub: %+v", list)
+	}
+	if got := sessionHubURL(); got != h.URL {
+		t.Fatalf("session hub url %q", got)
+	}
+}
+
+func TestHookAcceptsManagedMarker(t *testing.T) {
+	h := startHub(t)
+	testEnv(t, h)
+	if out, _, err := runCLI(t, fixture(t, "hook_session_start.json"), "hook", "session-start", managedFlag); err != nil || !strings.Contains(out, "your session id is") {
+		t.Fatalf("%q %v", out, err)
 	}
 }

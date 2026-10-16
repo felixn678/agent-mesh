@@ -39,6 +39,10 @@ func hooksOff() bool { return os.Getenv("AGENTMESH_HOOKS") == "off" }
 // to <state-dir>/hook.log and the hook exits 0 with no output, so a missing
 // token or a down hub never disturbs the session.
 func runHook(ctx context.Context, std cmdIO, args []string) error {
+	// Commands written by setup-claude carry a trailing ownership marker.
+	if len(args) == 2 && args[1] == managedFlag {
+		args = args[:1]
+	}
 	if len(args) != 1 {
 		return errors.New("usage: hook session-start|prompt|stop|session-end|mcp-headers")
 	}
