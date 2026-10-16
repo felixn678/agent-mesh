@@ -45,6 +45,10 @@ type Config struct {
 	GitleaksBin            string                 `toml:"gitleaks_bin"`
 	Repos                  map[string]string      `toml:"repos"` // task.repo -> remote URL
 	ToolProfiles           map[string]ToolProfile `toml:"tool_profiles"`
+
+	// ConfigDir is the directory holding daemon.toml (set by LoadConfig);
+	// workers may not read or edit it.
+	ConfigDir string `toml:"-"`
 }
 
 // DefaultConfig returns the loopback v1 defaults (no repos, no profiles).
@@ -90,6 +94,11 @@ func LoadConfig(path string) (Config, error) {
 	if err := c.expandPaths(); err != nil {
 		return c, err
 	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return c, err
+	}
+	c.ConfigDir = abs
 	return c, c.Validate()
 }
 

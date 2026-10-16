@@ -303,3 +303,43 @@ func TestSSHAgentOnlyForOptedInProfiles(t *testing.T) {
 		t.Errorf("workerEnv mutated the shared env: %v", d.claudeEnv)
 	}
 }
+
+// The agent-mesh config dirs and the exact secret files are off-limits to
+// workers wherever they live (macOS: ~/Library/Application Support/...).
+func TestDenyFloorCoversConfigDirsAndSecrets(t *testing.T) {
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	c := validTestConfig(t)
+	c.StateDir = "/srv/am/state"
+	c.ConfigDir = "/Users/u/Library/Application Support/agent-mesh"
+	c.HostTokenFile, c.GHEnvFile, c.ClaudeEnvFile = "/opt/secrets/host.token", "/opt/secrets/gh.env", "/opt/secrets/claude.env"
+	floor := strings.Join(denyFloor(c), "\n")
+	for _, want := range []string{
+		"Read(//Users/u/Library/Application Support/agent-mesh/**)", "Edit(//Users/u/Library/Application Support/agent-mesh/**)",
+		"Read(" + absRule(filepath.Join(cfgHome, "agent-mesh")) + "/**)",
+		"Read(//opt/secrets/host.token)", "Edit(//opt/secrets/gh.env)", "Read(//opt/secrets/claude.env)",
+		"Read(//srv/am/state/hub.db*)",
+	} {
+		if !strings.Contains(floor, want) {
+			t.Errorf("floor missing %q", want)
+		}
+	}
+	// A config dir that contains the worktrees would lock the worker out of
+	// its own worktree; it is skipped (the exact secret files still apply).
+	c.ConfigDir = "/srv/am"
+	if strings.Contains(strings.Join(denyFloor(c), "\n"), "(//srv/am/**)") {
+		t.Error("config dir above the worktrees was denied")
+	}
+}
+
+func TestLoadConfigRecordsConfigDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.toml")
+	if err := os.WriteFile(path, []byte("state_dir = \""+filepath.Join(dir, "state")+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadConfig(path)
+	if err != nil || c.ConfigDir != dir {
+		t.Fatalf("ConfigDir %q (%v), want %q", c.ConfigDir, err, dir)
+	}
+}

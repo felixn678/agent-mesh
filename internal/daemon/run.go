@@ -14,6 +14,7 @@ import (
 
 	"github.com/felixn678/agent-mesh/internal/client"
 	"github.com/felixn678/agent-mesh/internal/config"
+	"github.com/felixn678/agent-mesh/internal/logfile"
 )
 
 // Run is the `agent-mesh daemon` entry point (args exclude the subcommand).
@@ -25,8 +26,16 @@ func Run(ctx context.Context, args []string) error {
 	}
 	path := fs.String("config", filepath.Join(dir, "daemon.toml"), "path to daemon.toml")
 	printLoad := fs.Bool("print-load", false, "print hardware, slots and current load as JSON, then exit")
+	logPath := fs.String("log-file", "", "write logs to this file, rotated at 10 MB x 3 (for launchd; systemd uses the journal)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *logPath != "" && !*printLoad {
+		lf, err := logfile.Setup(*logPath)
+		if err != nil {
+			return err
+		}
+		defer lf.Close()
 	}
 	cfg, err := LoadConfig(*path)
 	if err != nil {

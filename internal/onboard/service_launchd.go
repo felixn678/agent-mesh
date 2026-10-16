@@ -32,12 +32,16 @@ func (m *launchdManager) ctl(ctx context.Context, args ...string) error {
 }
 
 // renderPlist mirrors deploy/launchd: keep alive, private umask (63 = 0077).
+// launchd never rotates StandardOutPath, so the process writes its own
+// size-capped log (--log-file, 10 MB x 3) and stdout/stderr only catch
+// startup failures (trimmed by the process when they grow past 1 MB).
 func renderPlist(home, bin, path string, u Unit, label string) string {
+	logDir := filepath.Join(home, "Library", "Logs", "agent-mesh")
 	var args strings.Builder
-	for _, a := range append([]string{bin}, u.Args...) {
+	for _, a := range append(append([]string{bin}, u.Args...), "--log-file", filepath.Join(logDir, u.Name+".log")) {
 		fmt.Fprintf(&args, "    <string>%s</string>\n", html.EscapeString(a))
 	}
-	log := html.EscapeString(filepath.Join(home, "Library", "Logs", "agent-mesh", u.Name+".log"))
+	log := html.EscapeString(filepath.Join(logDir, u.Name+".stderr.log"))
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
