@@ -46,18 +46,18 @@ func (t tools) addSessionTaskTools(srv *mcp.Server) {
 	if !t.p.Session {
 		return
 	}
-	mcp.AddTool(srv, &mcp.Tool{Name: "task_claim", Description: "Claim the next task for your session's repo (only when idle)."}, t.taskClaim)
+	mcp.AddTool(srv, &mcp.Tool{Name: "task_claim", Description: "Claim the next task for your repo (only when idle)."}, t.taskClaim)
 	mcp.AddTool(srv, &mcp.Tool{Name: "task_heartbeat", Description: "Extend the lease of your claimed task."}, t.taskHeartbeat)
-	mcp.AddTool(srv, &mcp.Tool{Name: "task_done", Description: "Complete your claimed task; the requester is messaged."}, t.taskDone)
+	mcp.AddTool(srv, &mcp.Tool{Name: "task_done", Description: "Complete your claimed task."}, t.taskDone)
 	mcp.AddTool(srv, &mcp.Tool{Name: "task_fail", Description: "Fail your claimed task."}, t.taskFail)
-	mcp.AddTool(srv, &mcp.Tool{Name: "task_release", Description: "Give your claimed task back unworked."}, t.taskRelease)
+	mcp.AddTool(srv, &mcp.Tool{Name: "task_release", Description: "Give your claimed task back."}, t.taskRelease)
 }
 
 // ClaimIn names the claiming session. RequestID makes a retried claim (after
 // an error or timeout) return the task the first attempt already took.
 type ClaimIn struct {
 	Session   string `json:"session"`
-	RequestID string `json:"request_id,omitempty" jsonschema:"any token; reuse it when retrying a failed claim"`
+	RequestID string `json:"request_id,omitempty" jsonschema:"reuse on retry"`
 }
 
 func (t tools) taskClaim(ctx context.Context, _ *mcp.CallToolRequest, in ClaimIn) (*mcp.CallToolResult, any, error) {

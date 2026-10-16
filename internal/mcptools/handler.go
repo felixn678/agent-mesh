@@ -78,7 +78,7 @@ func storeErr(err error) *mcp.CallToolResult {
 	case errors.Is(err, store.ErrCancelled):
 		return errResult("task was cancelled; stop working on it")
 	case errors.Is(err, store.ErrConflict):
-		return errResult("task state does not allow this operation")
+		return errResult("conflict: %v", err) // store messages carry no secrets
 	case errors.Is(err, store.ErrSessionNotFound):
 		return errResult("session not found")
 	case errors.Is(err, store.ErrSessionOwner):

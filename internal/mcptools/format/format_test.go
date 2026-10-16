@@ -69,9 +69,13 @@ func TestLines(t *testing.T) {
 	if got := HostLine(h, now, true); !strings.HasSuffix(got, ", cpu_model x86") {
 		t.Fatalf("verbose host line %q", got)
 	}
-	s := api.Session{ID: "0123456789", Host: "host-b", Cwd: "/w/lumio", Name: "fe", LastSeenAt: now.Add(-3 * time.Minute).UnixMilli()}
+	s := api.Session{ID: "0123456789", Host: "host-b", Cwd: "/w/lumio", Name: "fe", Worker: true, LastSeenAt: now.Add(-3 * time.Minute).UnixMilli()}
 	if got := SessionLine(s, now); got != "01234567 host-b lumio [fe] seen 3m ago" {
 		t.Fatalf("session line %q", got)
+	}
+	s.Worker = false
+	if got := SessionLine(s, now); got != "01234567 host-b lumio [fe] worker:off seen 3m ago" {
+		t.Fatalf("non-worker session line %q", got)
 	}
 }
 

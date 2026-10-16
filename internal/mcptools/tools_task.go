@@ -14,17 +14,18 @@ import (
 // TaskAddIn is the task_add input. It carries a tool profile name, never a
 // tool list; validation is api.TaskSpec.Validate (via store.Add).
 type TaskAddIn struct {
-	From           string  `json:"from,omitempty" jsonschema:"your session id: messaged on completion; repo defaults to its repo"`
+	From           string  `json:"from,omitempty" jsonschema:"your session id (notified when done; default repo)"`
 	Repo           string  `json:"repo,omitempty" jsonschema:"git remote or repo key"`
 	Prompt         string  `json:"prompt"`
 	BaseBranch     string  `json:"base_branch,omitempty"`
 	BudgetUSD      float64 `json:"budget_usd"`
 	PermissionMode string  `json:"permission_mode,omitempty" jsonschema:"acceptEdits|dontAsk|plan"`
-	ToolProfile    string  `json:"tool_profile,omitempty" jsonschema:"host profile name, default 'default'"`
+	ToolProfile    string  `json:"tool_profile,omitempty" jsonschema:"host profile name"`
 	Host           string  `json:"host,omitempty"`
 	MaxAttempts    int     `json:"max_attempts,omitempty"`
-	TargetHost     string  `json:"target_host,omitempty" jsonschema:"only sessions/daemons on this host"`
-	TargetSession  string  `json:"target_session,omitempty" jsonschema:"only this session (id, prefix or name)"`
+	TargetHost     string  `json:"target_host,omitempty" jsonschema:"run on this host only"`
+	TargetSession  string  `json:"target_session,omitempty" jsonschema:"session id, prefix or name"`
+	RequestID      string  `json:"request_id,omitempty" jsonschema:"generate a unique id per logical task and reuse it if you retry this call"`
 }
 
 // TaskListIn filters task_list.
@@ -51,7 +52,7 @@ func (t tools) addTaskTools(srv *mcp.Server) {
 func (t tools) taskAdd(ctx context.Context, _ *mcp.CallToolRequest, in TaskAddIn) (*mcp.CallToolResult, any, error) {
 	spec := api.TaskSpec{Repo: in.Repo, Prompt: in.Prompt, BaseBranch: in.BaseBranch, MaxBudgetUSD: in.BudgetUSD,
 		PermissionMode: in.PermissionMode, ToolProfile: in.ToolProfile, Host: in.Host, MaxAttempts: in.MaxAttempts,
-		TargetHost: in.TargetHost, CreatedBySession: in.From}
+		TargetHost: in.TargetHost, CreatedBySession: in.From, RequestID: in.RequestID}
 	if in.TargetSession != "" {
 		target, res := t.resolveTarget(ctx, in.TargetSession)
 		if res != nil {
@@ -71,9 +72,12 @@ func (t tools) taskAdd(ctx context.Context, _ *mcp.CallToolRequest, in TaskAddIn
 	if spec.Repo == "" {
 		return errResult("repo is required (or pass from= a session registered with a git remote)"), nil, nil
 	}
-	task, err := t.st.AddTask(ctx, spec, t.p)
+	task, replayed, err := t.st.AddTaskReplay(ctx, spec, t.p)
 	if err != nil {
 		return storeErr(err), nil, nil
+	}
+	if replayed {
+		return textResult("already queued (same request_id) " + format.TaskLine(task)), nil, nil
 	}
 	return textResult("queued " + format.TaskLine(task)), nil, nil
 }

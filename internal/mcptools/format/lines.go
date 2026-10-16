@@ -93,6 +93,9 @@ func SessionLine(s api.Session, now time.Time) string {
 	if s.Name != "" {
 		b.WriteString(" [" + Clean(s.Name) + "]")
 	}
+	if !s.Worker {
+		b.WriteString(" worker:off")
+	}
 	b.WriteString(" seen " + Ago(now, s.LastSeenAt))
 	return b.String()
 }
