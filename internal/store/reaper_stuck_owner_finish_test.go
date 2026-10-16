@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -105,4 +106,32 @@ func TestCancelOrRequeueEndsLateFinish(t *testing.T) {
 	}
 	_, err = e.st.Fail(bg, "box", c.ID, api.FailRequest{Fence: c.Fence, Reason: "late"})
 	wantErr(t, err, store.ErrLeaseLost)
+}
+
+// The creator hears about the reaper's verdict and then about the worker's
+// real outcome; a replay sends nothing more.
+func TestLateFailSendsCreatorSecondNotice(t *testing.T) {
+	e := newEnv(t)
+	e.session(t, "host-a", "boss", proj)
+	s := spec("r")
+	s.MaxAttempts, s.CreatedBySession = 1, "boss"
+	task := e.add(t, s)
+	c := e.claim(t, "box")
+	e.clock.Advance(5*time.Minute + 31*time.Minute)
+	if res, err := e.st.Reap(bg); err != nil || res.Stuck != 1 {
+		t.Fatalf("reap: %+v %v", res, err)
+	}
+	req := api.FailRequest{Fence: c.Fence, Reason: "secret scan blocked"}
+	for range 2 { // second call is a replay
+		if _, err := e.st.Fail(bg, "box", task.ID, req); err != nil {
+			t.Fatal(err)
+		}
+	}
+	msgs, err := e.st.Inbox(bg, "host-a", "boss", true)
+	if err != nil || len(msgs) != 2 {
+		t.Fatalf("%d notices: %+v %v", len(msgs), msgs, err)
+	}
+	if !strings.Contains(msgs[0].Body, "at attempt cap") || !strings.Contains(msgs[1].Body, "result: secret scan blocked") {
+		t.Fatalf("notices: %q / %q", msgs[0].Body, msgs[1].Body)
+	}
 }

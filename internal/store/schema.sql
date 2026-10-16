@@ -1,4 +1,4 @@
--- Schema version 3 (older databases gain the columns marked "v2"/"v3" via ALTER, see db.go). Statements are idempotent so concurrent first opens are safe.
+-- Schema version 4 (older databases gain the columns marked "v2"/"v3" via ALTER and the v4 trigger, see db.go). Statements are idempotent so concurrent first opens are safe.
 CREATE TABLE IF NOT EXISTS tasks (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,  -- ids never reused (branch names embed id)
   repo             TEXT NOT NULL,                 -- logical key; host maps to clone URL
@@ -83,9 +83,12 @@ CREATE INDEX IF NOT EXISTS messages_inbox ON messages(to_session, read_at, id);
 
 -- Completion notice: when a task created by a session reaches done or stuck,
 -- the creator gets a message from "hub" in the same transaction as the state
--- change, so no code path (complete, fail, reaper) can skip it.
-CREATE TRIGGER IF NOT EXISTS tasks_notify_creator AFTER UPDATE OF state ON tasks
-WHEN NEW.created_by_session IS NOT NULL AND NEW.state IN ('done','stuck') AND OLD.state <> NEW.state
+-- change, so no code path (complete, fail, reaper) can skip it. v4: the owner's
+-- late Fail of a reaper-stuck task (stuck -> stuck, lease marker cleared) sends
+-- a second notice carrying the worker's real reason.
+CREATE TRIGGER IF NOT EXISTS tasks_notify_creator AFTER UPDATE OF state, lease_expires_at ON tasks
+WHEN NEW.created_by_session IS NOT NULL AND NEW.state IN ('done','stuck') AND (OLD.state <> NEW.state
+  OR (OLD.state = 'stuck' AND OLD.lease_expires_at IS NOT NULL AND NEW.lease_expires_at IS NULL))
 BEGIN
   INSERT INTO messages (from_session, from_host, to_session, body, created_at)
   VALUES ('hub', 'hub', NEW.created_by_session,
