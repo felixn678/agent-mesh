@@ -70,5 +70,7 @@ func Run(ctx context.Context, args []string) error {
 	}
 	defer ln.Close()
 	slog.Info("hub listening", "addr", ln.Addr().String())
-	return NewServer(cfg, store.New(db, nil, cfg.Lease())).Serve(ctx, ln)
+	srv := NewServer(cfg, store.New(db, nil, cfg.Lease()))
+	defer srv.watchReload(ctx, *path)()
+	return srv.Serve(ctx, ln)
 }

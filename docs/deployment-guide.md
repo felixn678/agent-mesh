@@ -6,6 +6,23 @@ All names in angle brackets are placeholders. Never commit real values.
 
 git, gh, claude (logged in), gitleaks (`go install github.com/zricethezav/gitleaks/v8@<pinned>` or a release binary). Build artifacts: `make cross` writes `dist/agent-mesh-{linux-amd64,darwin-arm64,darwin-amd64}`.
 
+## Fast path: `up`, `invite`, `join`, `doctor`
+
+| Command | Where | What it does |
+|---|---|---|
+| `agent-mesh up [--listen addr] [--name host] [--no-service]` | hub machine | creates the config dir (0700), `admin.token`, `host.token`, `session.token` (0600), `hub.toml`, `daemon.toml`, `client.toml`; installs and starts the hub and daemon user services (systemd `--user` on Linux, launchd on macOS). Idempotent. `--listen` on an existing setup rewrites `listen` and `hub_url` and restarts the hub. |
+| `agent-mesh invite <host-name> [--url u]` | hub machine | mints host and session tokens, appends their hashes to `hub.toml` (comments preserved, file validated before it replaces the old one), signals the hub to reload, prints `agent-mesh join <hub-url> <bundle>`. |
+| `agent-mesh join <hub-url> <bundle> [--no-service]` | other machine | verifies both tokens against the hub, then writes `host.token`, `session.token`, `daemon.toml`, `client.toml` and installs the daemon service. |
+| `agent-mesh doctor` | any | checks config, token modes, hub reachability, auth, `claude auth status`, git, `gh auth status`, gitleaks, services, Tailscale. Exit status is non-zero if a required check fails. |
+
+The bundle is base64url of `{"v":1,"url","host","host_token","session_token"}`; treat it as a secret. The hub reloads its token tables (admin, host, session) on `SIGHUP`; a `hub.toml` that fails validation is rejected and the old tokens stay active. Listen address, database and timings still need a restart. While running, the hub writes `hub.pid` next to `hub.toml` so `invite` can signal it when no service manager owns the hub. `client.toml` holds `hub_url` for CLI commands (`AGENTMESH_URL` overrides it).
+
+`up` binds loopback unless you pass `--listen`, and refuses wildcard addresses. Services run the binary at the path you launched `up`/`join` from (resolved), so install `agent-mesh` to a stable location first (for example `~/.local/bin`). Unit files are rewritten only when their content changes, and only then is the service restarted.
+
+## Manual setup
+
+The rest of this guide describes what the commands automate and is the reference for manual installs.
+
 ## Layout installed by `deploy/install.sh <hub|daemon|both> [binary]`
 
 | Path | Purpose |
