@@ -15,11 +15,13 @@ type cmdIO struct {
 }
 
 const usage = `usage:
-  agent-mesh task add --repo <r> (--prompt <text> | --prompt-file <f|->) [--base b] [--budget usd]
+  agent-mesh task add --repo <r> (--prompt <text> | --prompt-file <f|->) --budget <usd> [--base b]
                       [--mode acceptEdits|dontAsk|plan] [--profile p] [--host h] [--max-attempts n]
   agent-mesh task list [--state s] [--since 16h]
-  agent-mesh task get|cancel|requeue <id>
+  agent-mesh task get <id>
+  agent-mesh task cancel|requeue <id>        (hub machine only: needs admin.token)
   agent-mesh hosts [--verbose] [--sessions]
+  agent-mesh sessions
   agent-mesh inbox --session <id> [--wait]
   agent-mesh hook session-start|prompt|stop|session-end|mcp-headers
   agent-mesh setup-claude [--uninstall] [--dry-run] [--force]`
@@ -40,6 +42,8 @@ func run(ctx context.Context, std cmdIO, args []string) error {
 		return runTask(ctx, std, rest)
 	case "hosts":
 		return runHosts(ctx, std, rest)
+	case "sessions":
+		return runSessions(ctx, std, rest)
 	case "inbox":
 		return runInbox(ctx, std, rest, defaultWaitOpts)
 	case "hook":
