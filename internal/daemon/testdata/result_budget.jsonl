@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"00000000-0000-4000-8000-000000000002","permissionMode":"acceptEdits"}
+{"type":"result","subtype":"error_max_budget_usd","is_error":true,"session_id":"00000000-0000-4000-8000-000000000002","total_cost_usd":0.0123,"num_turns":2}
