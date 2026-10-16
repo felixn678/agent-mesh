@@ -26,7 +26,23 @@ func readProcessArgs(pid int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return strings.Fields(string(out)), nil
+	return splitPSCommand(string(out)), nil
+}
+
+// splitPSCommand turns `ps -o command=` output (macOS has no /proc) into argv.
+// ps joins argv with spaces, so an executable path containing spaces (e.g.
+// under "Application Support") would split into pieces; the first word ending
+// a path element named like the binary is taken as the end of argv[0].
+func splitPSCommand(out string) []string {
+	cmd := strings.TrimSpace(out)
+	if i := strings.Index(cmd, "agent-mesh"); i >= 0 {
+		end := len(cmd)
+		if j := strings.IndexByte(cmd[i:], ' '); j >= 0 {
+			end = i + j
+		}
+		return append([]string{cmd[:end]}, strings.Fields(cmd[end:])...)
+	}
+	return strings.Fields(cmd)
 }
 
 // isHubArgs reports whether argv looks like `.../agent-mesh hub ...`.

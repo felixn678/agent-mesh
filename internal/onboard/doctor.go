@@ -93,7 +93,8 @@ func runChecks(ctx context.Context, e *Env) []Result {
 	}
 
 	url, src := hubURLFor(e)
-	add(hubReachable(ctx, url, src))
+	reach := hubReachable(ctx, url, src)
+	add(reach)
 	for _, n := range names {
 		if tok, ok := tokens[n]; ok {
 			add(authResult(ctx, n, url, tok))
@@ -101,7 +102,7 @@ func runChecks(ctx context.Context, e *Env) []Result {
 	}
 	add(toolChecks(ctx, e)...)
 	add(servicePathCheck(e))
-	add(serviceChecks(ctx, e, isHub == nil)...)
+	add(serviceChecks(ctx, e, isHub == nil, reach.Status == Pass)...)
 	add(tailscaleCheck(ctx, e))
 	return rs
 }

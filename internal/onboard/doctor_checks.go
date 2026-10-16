@@ -65,8 +65,9 @@ func firstLine(b []byte) string {
 }
 
 // serviceChecks warn (not fail) when a service is down: the hub may be run by
-// hand with --no-service, and reachability is checked separately.
-func serviceChecks(ctx context.Context, e *Env, isHub bool) []Result {
+// hand with --no-service, and reachability is checked separately. hubReachable
+// tells a hub started by hand apart from a hub that is really down.
+func serviceChecks(ctx context.Context, e *Env, isHub, hubReachable bool) []Result {
 	var rs []Result
 	names := []string{"daemon"}
 	if isHub {
@@ -77,6 +78,9 @@ func serviceChecks(ctx context.Context, e *Env, isHub bool) []Result {
 		switch {
 		case err != nil:
 			rs = append(rs, Result{"service " + n, Warn, err.Error(), "run agent-mesh " + n + " manually"})
+		case !up && n == "hub" && hubReachable:
+			rs = append(rs, Result{"service hub", Warn, "not installed/running as a service (hub reachable — started manually?)",
+				"agent-mesh up installs the hub service so it survives logout and reboot"})
 		case !up:
 			rs = append(rs, Result{"service " + n, Warn, "not running", "agent-mesh up (or join) installs it; or run: agent-mesh " + n})
 		default:

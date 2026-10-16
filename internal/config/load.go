@@ -31,7 +31,10 @@ func LoadTOML(path string, v any) error {
 	return nil
 }
 
-// DefaultDir is the per-user config directory (e.g. ~/.config/agent-mesh).
+// DefaultDir is the per-user config directory: ~/.config/agent-mesh on Linux
+// ($XDG_CONFIG_HOME honoured), ~/Library/Application Support/agent-mesh on
+// macOS (os.UserConfigDir). Note the space in the macOS path: never build
+// shell strings from it.
 func DefaultDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {

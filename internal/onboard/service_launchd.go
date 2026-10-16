@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // launchdManager manages LaunchAgents labelled com.agentmesh.<name>.
@@ -16,9 +17,7 @@ type launchdManager struct{ e *Env }
 
 func (m *launchdManager) label(name string) string { return "com.agentmesh." + name }
 
-func (m *launchdManager) target(name string) string {
-	return "gui/" + strconv.Itoa(os.Getuid()) + "/" + m.label(name)
-}
+func (m *launchdManager) target(name string) string { return m.domain() + "/" + m.label(name) }
 
 func (m *launchdManager) plistPath(name string) string {
 	return filepath.Join(m.e.Home, "Library", "LaunchAgents", m.label(name)+".plist")
@@ -70,7 +69,28 @@ func renderPlist(home, bin, path string, u Unit, label string) string {
 `, label, args.String(), html.EscapeString(path), log, log)
 }
 
+// launchdRetryDelay spaces bootstrap retries: launchd finishes a bootout
+// asynchronously, and bootstrapping too early fails with "5: Input/output
+// error". A variable so tests run without sleeping.
+var launchdRetryDelay = 300 * time.Millisecond
+
+const launchdBootstrapAttempts = 10
+
+// domain is the per-user GUI launchd domain LaunchAgents live in.
+func (m *launchdManager) domain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
+
+// Install writes the plist and makes launchd run it. Cases:
+//   - not loaded: bootstrap it;
+//   - loaded, unchanged: start it if it is not running (kickstart), else no-op;
+//   - loaded, changed: bootout, then bootstrap the new definition (retried
+//     while launchd is still tearing the old one down).
 func (m *launchdManager) Install(ctx context.Context, u Unit) error {
+	// The gui domain only exists while the user is logged in to the Mac (not
+	// over a plain SSH session); fail with a clear hint instead of launchctl's
+	// numeric error.
+	if _, err := m.e.Runner.Output(ctx, "launchctl", "print", m.domain()); err != nil {
+		return fmt.Errorf("launchd %s domain is unavailable (no desktop login for this user, e.g. only SSH): log in on the Mac once, or re-run with --no-service", m.domain())
+	}
 	if err := os.MkdirAll(filepath.Join(m.e.Home, "Library", "Logs", "agent-mesh"), 0o700); err != nil {
 		return err
 	}
@@ -81,19 +101,41 @@ func (m *launchdManager) Install(ctx context.Context, u Unit) error {
 	want := []byte(renderPlist(m.e.Home, m.e.Binary, m.e.servicePath(), u, m.label(u.Name)))
 	cur, _ := os.ReadFile(path)
 	changed := !bytes.Equal(cur, want)
-	running, _ := m.Running(ctx, u.Name)
 	if changed {
 		if err := writeAtomic(path, want, 0o644); err != nil {
 			return err
 		}
 	}
-	if running && !changed {
+	out, err := m.e.Runner.Output(ctx, "launchctl", "print", m.target(u.Name))
+	loaded := err == nil
+	switch {
+	case loaded && !changed && bytes.Contains(out, []byte("state = running")):
 		return nil
+	case loaded && !changed:
+		return m.ctl(ctx, "kickstart", m.target(u.Name))
+	case loaded:
+		if err := m.ctl(ctx, "bootout", m.target(u.Name)); err != nil {
+			return err
+		}
 	}
-	if running { // definition changed: reload it
-		_ = m.ctl(ctx, "bootout", m.target(u.Name))
+	return m.bootstrap(ctx, path)
+}
+
+// bootstrap loads the plist into the gui domain, retrying while a previous
+// instance is still being removed.
+func (m *launchdManager) bootstrap(ctx context.Context, path string) error {
+	var err error
+	for i := 0; i < launchdBootstrapAttempts; i++ {
+		if err = m.ctl(ctx, "bootstrap", m.domain(), path); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(launchdRetryDelay):
+		}
 	}
-	return m.ctl(ctx, "bootstrap", "gui/"+strconv.Itoa(os.Getuid()), path)
+	return err
 }
 
 func (m *launchdManager) Restart(ctx context.Context, name string) error {

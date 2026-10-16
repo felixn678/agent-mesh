@@ -1,4 +1,4 @@
-# ~/.config/agent-mesh/daemon.toml  (mode 0600). Placeholders only.
+# <config-dir>/daemon.toml (mode 0600): ~/Library/Application Support/agent-mesh on macOS. Placeholders only.
 hub_url = "http://<hub-tailnet-name>:8787"   # Tailscale MagicDNS name or <tailnet-ip>
 # host_token_file = "<config-dir>/host.token"   # default: host.token next to this file
 state_dir = "~/.local/share/agent-mesh"   # repos/ worktrees/ logs/ spool/ run/
