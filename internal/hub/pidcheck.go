@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/felixn678/agent-mesh/internal/sysproc"
 )
 
 // ProcessArgs returns the argv of pid; a variable so tests can stand in for
@@ -22,7 +24,7 @@ func readProcessArgs(pid int) ([]string, error) {
 		}
 		return strings.Split(strings.TrimRight(string(b), "\x00"), "\x00"), nil
 	}
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
+	out, err := exec.Command(sysproc.PS(), "-p", strconv.Itoa(pid), "-o", "command=").Output()
 	if err != nil {
 		return nil, err
 	}

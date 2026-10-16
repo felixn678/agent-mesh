@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/felixn678/agent-mesh/internal/sysproc"
 )
 
 // errParentGone cancels a waiter whose Claude session is gone: it must exit
@@ -56,7 +58,7 @@ func parentPID(pid int) int {
 			}
 		}
 	}
-	out, err := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
+	out, err := exec.Command(sysproc.PS(), "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return 0
 	}
