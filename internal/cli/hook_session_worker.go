@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,20 +35,22 @@ func gitRemote(ctx context.Context, cwd string) string {
 }
 
 // heartbeatHeld extends the lease of every task this session holds, so a
-// long interactive task does not expire between turns. Best effort.
+// long interactive task does not expire between turns. Best effort: one
+// refused heartbeat (e.g. a reaped task) does not skip the others.
 func heartbeatHeld(ctx context.Context, c *client.Client, session string) error {
 	tasks, err := c.ListTasks(ctx, api.StateRunning, time.Time{})
 	if err != nil {
 		return err
 	}
+	var errs []error
 	for _, t := range tasks {
 		if t.ClaimedBy == store.SessionHolderPrefix+session {
 			if err := c.SessionHeartbeat(ctx, session, t.ID, api.HeartbeatRequest{Fence: t.Fence}); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("task %d: %w", t.ID, err))
 			}
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // claimCooldown keeps a waiter from re-waking a session for the same

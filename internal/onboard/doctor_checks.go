@@ -12,6 +12,19 @@ import (
 // hubURLFor resolves the hub URL exactly like the other CLI commands.
 func hubURLFor(e *Env) (url, source string) { return config.HubURL(e.ConfigDir) }
 
+// sessionURLCheck warns when $AGENTMESH_URL points CLI commands at a
+// different hub than the config files that hooks, the waiter and the MCP
+// server use (they ignore the variable on purpose).
+func sessionURLCheck(e *Env, url, src string) (Result, bool) {
+	surl, ssrc := config.SessionHubURL(e.ConfigDir)
+	if src != "$AGENTMESH_URL" || url == surl {
+		return Result{}, false
+	}
+	return Result{"session hub", Warn,
+		fmt.Sprintf("hooks, waiter and MCP use %s (from %s); $AGENTMESH_URL=%s only affects CLI commands", surl, ssrc, url),
+		"unset AGENTMESH_URL, or set hub_url in client.toml to the hub you mean"}, true
+}
+
 func hubReachable(ctx context.Context, url, src string) Result {
 	name := "hub reachable"
 	if err := waitHealthy(ctx, url, 0); err != nil {

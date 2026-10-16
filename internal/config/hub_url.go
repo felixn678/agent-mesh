@@ -17,6 +17,13 @@ func HubURL(dir string) (url, source string) {
 	if u := os.Getenv("AGENTMESH_URL"); u != "" {
 		return u, "$AGENTMESH_URL"
 	}
+	return SessionHubURL(dir)
+}
+
+// SessionHubURL is HubURL without $AGENTMESH_URL: the hub that clients
+// sending the session token (hooks, waiter, MCP headers helper) use, so an
+// environment variable injected into hooks cannot redirect that token.
+func SessionHubURL(dir string) (url, source string) {
 	for _, n := range []string{"client.toml", "daemon.toml"} {
 		if dir == "" { // never fall back to files in the current directory
 			break
