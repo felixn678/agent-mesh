@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   cwd          TEXT NOT NULL DEFAULT '',
   name         TEXT NOT NULL DEFAULT '',
   repo         TEXT NOT NULL DEFAULT '',          -- v2: normalized project key
+  worker       INTEGER NOT NULL DEFAULT 1,        -- v6: 0 = never claims tasks
   started_at   INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL,
   ended_at     INTEGER

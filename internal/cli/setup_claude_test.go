@@ -198,7 +198,7 @@ func TestSetupClaudeRepairsOwnMCPAndRefusesTempBinary(t *testing.T) {
 	e.bin = filepath.Join(os.TempDir(), "go-build42", "exe", "agent-mesh")
 	var out syncBuf
 	err := setupClaude(bg, cmdIO{in: strings.NewReader(""), out: &out, err: &out}, e, setupFlags{})
-	if err == nil || !strings.Contains(err.Error(), "looks temporary") {
+	if err == nil || !strings.Contains(err.Error(), "go run") {
 		t.Fatalf("temp binary must be refused: %v", err)
 	}
 }

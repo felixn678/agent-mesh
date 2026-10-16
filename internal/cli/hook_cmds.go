@@ -133,9 +133,9 @@ type hookCtx struct {
 
 // register refreshes the session; repo is sent only at session start (an
 // empty repo keeps the stored one).
-func (h *hookCtx) register(repo string) (api.Session, error) {
+func (h *hookCtx) register(repo string, worker *bool) (api.Session, error) {
 	return h.c.RegisterSession(h.ctx, api.RegisterSessionRequest{
-		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo})
+		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo, Worker: worker})
 }
 
 // unread renders the session's unread messages ("" if none) without marking
@@ -151,15 +151,12 @@ func (h *hookCtx) unread() (string, error) {
 }
 
 func (h *hookCtx) sessionStart() ([]byte, error) {
-	s, err := h.register(gitRemote(h.ctx, h.in.Cwd))
+	worker := workerMode()
+	s, err := h.register(gitRemote(h.ctx, h.in.Cwd), &worker)
 	if err != nil {
 		return nil, err
 	}
-	text := fmt.Sprintf("agentmesh: your session id is %s (%s). Pass it as `from`/`session` to the agentmesh MCP tools. "+
-		"To receive messages and work while idle, start `%s` with run_in_background; when it exits, handle what it printed, "+
-		"then restart it. If it says already running, do not restart. When it reports claimable tasks and you are idle: "+
-		"task_claim, do the task in this repo on a new branch, push the branch, task_done with a summary, restart the waiter. "+
-		"Never claim while in the middle of other work.", s.ID, s.Host, waiterCommand(s.ID))
+	text := sessionStartText(s, worker)
 	msgs, err := h.unread()
 	if err != nil {
 		return nil, err
@@ -171,7 +168,7 @@ func (h *hookCtx) sessionStart() ([]byte, error) {
 }
 
 func (h *hookCtx) prompt() ([]byte, error) {
-	if _, err := h.register(""); err != nil {
+	if _, err := h.register("", nil); err != nil {
 		return nil, err
 	}
 	msgs, err := h.unread()
@@ -188,7 +185,7 @@ func (h *hookCtx) prompt() ([]byte, error) {
 // death to ask for a restart. stop_hook_active (a stop already continued by
 // a hook) always allows, so a session can never loop.
 func (h *hookCtx) stop() ([]byte, error) {
-	if _, err := h.register(""); err != nil {
+	if _, err := h.register("", nil); err != nil {
 		return nil, err
 	}
 	if err := heartbeatHeld(h.ctx, h.c, h.in.SessionID); err != nil {

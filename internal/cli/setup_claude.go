@@ -70,8 +70,11 @@ func setupClaude(ctx context.Context, std cmdIO, e setupEnv, f setupFlags) error
 	if e.claude == "" && !f.dryRun {
 		return errors.New("setup-claude: `claude` not found on PATH")
 	}
-	if !f.uninstall && isTempBinary(e.bin) && !f.force {
-		return fmt.Errorf("setup-claude: %s looks temporary (go run or a build dir); run setup-claude from the installed agent-mesh binary (or pass --force)", e.bin)
+	if !f.uninstall && !f.force && strings.Contains(e.bin, "/go-build") {
+		return fmt.Errorf("setup-claude: %s is a `go run` build that will be deleted; run setup-claude from the installed agent-mesh binary (or pass --force)", e.bin)
+	}
+	if !f.uninstall && isTempBinary(e.bin) {
+		fmt.Fprintf(std.err, "warning: %s is in a temporary directory; hooks break if it is removed (re-run setup-claude from the installed binary)\n", e.bin)
 	}
 	if !f.uninstall {
 		if _, err := readSessionToken(); err != nil && !f.dryRun {
@@ -182,11 +185,11 @@ func saveCreated(path string, m map[string]Created) error {
 	return writeAtomic(path, append(b, '\n'), 0o600)
 }
 
-// isTempBinary flags paths that will not survive (go run, temp dirs), which
-// would leave every hook failing silently.
+// isTempBinary flags paths under the temp dir, which may not survive and
+// would then leave every hook failing silently.
 func isTempBinary(bin string) bool {
 	tmp := filepath.Clean(os.TempDir()) + string(filepath.Separator)
-	return strings.Contains(bin, "/go-build") || strings.HasPrefix(filepath.Clean(bin), tmp)
+	return strings.HasPrefix(filepath.Clean(bin), tmp)
 }
 
 // writeAtomic replaces path via a temp file in the same directory.

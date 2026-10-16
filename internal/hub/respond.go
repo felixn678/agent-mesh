@@ -64,6 +64,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, api.CodeCancelled, err.Error())
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, api.CodeConflict, err.Error())
+	case errors.Is(err, store.ErrNotWorker):
+		writeError(w, http.StatusConflict, api.CodeNotWorker, err.Error())
 	case errors.Is(err, store.ErrSessionEnded):
 		writeError(w, http.StatusConflict, api.CodeEnded, err.Error())
 	case errors.Is(err, store.ErrInboxFull):

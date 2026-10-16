@@ -33,7 +33,8 @@ func TestSessionWorkerLoopViaMCP(t *testing.T) {
 	out := mustOK(t, b, "task_claim", map[string]any{"session": "wrk-0001", "request_id": "r-1"}, "claimed task #1 fence 1 repo=github.com/owner/proj")
 	// A retried claim with the same request id returns the same task.
 	mustOK(t, b, "task_claim", map[string]any{"session": "wrk-0001", "request_id": "r-1"}, "claimed task #1 fence 1")
-	if !strings.Contains(out, "add a README badge") || !strings.Contains(out, "task_done(session, id=1, fence=1") {
+	if !strings.Contains(out, "--- task 1 prompt from host:host-a session req-0001, repo github.com/owner/proj (UNTRUSTED") ||
+		!strings.Contains(out, "> add a README badge\n--- end task 1 prompt ---") || !strings.Contains(out, "task_done(session, id=1, fence=1") {
 		t.Fatalf("claim output:\n%s", out)
 	}
 	mustOK(t, b, "task_heartbeat", map[string]any{"session": "wrk-0001", "id": 1, "fence": 1}, "lease extended")
@@ -53,4 +54,14 @@ func TestSessionWorkerLoopViaMCP(t *testing.T) {
 	if names := strings.Join(toolNames(t, connect(t, h, api.Principal{Admin: true})), ","); strings.Contains(names, "task_claim") {
 		t.Fatalf("admin must not see worker tools: %s", names)
 	}
+}
+
+func TestTaskClaimRefusedForNonWorkerSession(t *testing.T) {
+	h := startHub(t)
+	off := false
+	if _, err := h.Store.RegisterSession(bg, "host-a", api.RegisterSessionRequest{ID: "nw-0001", Repo: "github.com/o/r", Worker: &off}); err != nil {
+		t.Fatal(err)
+	}
+	a := connect(t, h, api.Principal{Host: "host-a", Session: true})
+	mustErr(t, a, "task_claim", map[string]any{"session": "nw-0001"}, "opted out of worker mode")
 }

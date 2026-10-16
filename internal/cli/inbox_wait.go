@@ -116,7 +116,7 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 			return stopped(ctx, std)
 		}
 		fresh := err == nil && newSinceAnnounced(dir, id, resp.Messages)
-		claimWake := err == nil && claimWakeDue(dir, id, resp.ClaimableCount)
+		claimWake := err == nil && workerMode() && claimWakeDue(dir, id, resp.ClaimableCount)
 		var he *client.HTTPError
 		switch {
 		case fresh || claimWake:

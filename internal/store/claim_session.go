@@ -16,7 +16,7 @@ import (
 // same statement as the claim itself.
 const sessionEligible = `FROM tasks t JOIN sessions s
   ON s.id = :sid AND s.host = :host AND s.ended_at IS NULL AND s.last_seen_at >= :cut
- AND s.repo <> '' AND t.repo = s.repo
+ AND s.repo <> '' AND t.repo = s.repo AND s.worker = 1
 WHERE (t.state = 'queued' OR (t.state = 'running' AND t.lease_expires_at < :now))
   AND t.attempts < t.max_attempts
   AND (t.host IS NULL OR t.host = :host)
@@ -79,6 +79,9 @@ func (s *Store) ClaimForSessionRequest(ctx context.Context, host, id string, req
 	}
 	if !sess.Alive {
 		return nil, ErrSessionEnded
+	}
+	if !sess.Worker {
+		return nil, ErrNotWorker
 	}
 	return nil, nil
 }
