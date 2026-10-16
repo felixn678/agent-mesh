@@ -1,8 +1,10 @@
 package hub
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -26,9 +28,16 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 
 // decode reads a JSON body (already size-limited). On failure it writes the
 // response (400, or 413 past the limit) and returns false.
-func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+func decode(w http.ResponseWriter, r *http.Request, v any) bool { return decodeBody(w, r, v, false) }
+
+// decodeOptional is decode that also accepts an empty body (zero value).
+func decodeOptional(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeBody(w, r, v, true)
+}
+
+func decodeBody(w http.ResponseWriter, r *http.Request, v any, allowEmpty bool) bool {
 	err := json.NewDecoder(r.Body).Decode(v)
-	if err == nil {
+	if err == nil || (allowEmpty && errors.Is(err, io.EOF)) {
 		return true
 	}
 	var tooBig *http.MaxBytesError
@@ -59,6 +68,9 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, api.CodeInboxFull, err.Error())
 	case errors.Is(err, store.ErrSessionOwner):
 		writeError(w, http.StatusForbidden, api.CodeForbidden, err.Error())
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		// Client went away or the hub is shutting down; not a server fault.
+		writeError(w, http.StatusServiceUnavailable, api.CodeUnavailable, "request cancelled")
 	default:
 		s.log.Error("internal error", "err", err)
 		writeError(w, http.StatusInternalServerError, api.CodeInternal, "internal error")

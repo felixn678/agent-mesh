@@ -47,3 +47,36 @@ func TestOpenUpgradesFirstSchemaVersion(t *testing.T) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
+
+// A second-version database gains the claim retry column.
+func TestOpenUpgradesSecondSchemaVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hub.db")
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"ALTER TABLE tasks DROP COLUMN claim_request_id", "PRAGMA user_version = 2"} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = db.Close()
+	if db, err = store.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	st := store.New(db, nil, store.DefaultLeaseConfig())
+	ctx := context.Background()
+	if _, err := st.Add(ctx, api.TaskSpec{Repo: "r", Prompt: "p", MaxBudgetUSD: 1}, "x"); err != nil {
+		t.Fatal(err)
+	}
+	caps := api.ClaimRequest{Repos: []string{"r"}, Modes: []string{"acceptEdits"}, Profiles: []string{"default"},
+		BudgetCap: 5, RequestID: "req"}
+	a, err := st.Claim(ctx, "box", caps)
+	if err != nil || a == nil {
+		t.Fatalf("%+v %v", a, err)
+	}
+	if b, err := st.Claim(ctx, "box", caps); err != nil || b == nil || b.ID != a.ID {
+		t.Fatalf("replay after upgrade: %+v %v", b, err)
+	}
+}

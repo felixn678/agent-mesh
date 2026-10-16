@@ -95,6 +95,7 @@ func TestPermissionMatrix(t *testing.T) {
 		{"GET", "/api/v1/messages/inbox?session=x", S},
 		{"GET", "/api/v1/sessions", A | S},
 		{"POST", "/api/v1/messages", A | S},
+		{"POST", "/api/v1/messages/ack", S},
 		{"POST", "/mcp", A | S},
 	}
 	for _, e := range endpoints {

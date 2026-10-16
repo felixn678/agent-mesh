@@ -25,6 +25,7 @@ const (
 	CodeForbidden    = "forbidden"
 	CodeTooLarge     = "too_large"
 	CodeInternal     = "internal"
+	CodeUnavailable  = "unavailable" // hub shutting down or request cancelled; retry
 )
 
 // ErrorBody is the JSON body of every non-2xx hub response.
@@ -120,6 +121,10 @@ type ClaimRequest struct {
 	Profiles  []string  `json:"profiles"`
 	BudgetCap float64   `json:"budget_cap"`
 	Load      *HostLoad `json:"load,omitempty"`
+	// RequestID (optional, daemon-generated per claim attempt) makes a
+	// retried claim idempotent: the same host and RequestID get the task they
+	// already hold back with the same fence instead of a second task.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // ClaimedTask is the subset of a task a worker needs; Fence must be echoed

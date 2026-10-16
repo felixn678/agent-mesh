@@ -106,6 +106,21 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request, p api.Principal) 
 	writeJSON(w, http.StatusOK, msgs)
 }
 
+// ackMessages marks messages the caller has delivered as read (the
+// at-least-once alternative to mark_read).
+func (s *Server) ackMessages(w http.ResponseWriter, r *http.Request, p api.Principal) {
+	var req api.AckMessagesRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	n, err := s.st.AckMessages(r.Context(), p.Host, req)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.AckMessagesResponse{Acked: n})
+}
+
 // waitLimiter caps concurrent long polls per host so they cannot exhaust
 // server resources.
 type waitLimiter struct {

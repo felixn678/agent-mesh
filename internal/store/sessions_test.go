@@ -199,8 +199,9 @@ func TestWaitInboxTimeoutAndImmediateAndCancel(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(bg, 100*time.Millisecond)
 	defer cancel()
-	if _, err := e.st.WaitInbox(ctx, "a", "sa", true, 5*time.Second); err == nil {
-		t.Fatal("cancelled wait returned no error")
+	start = time.Now()
+	if msgs, err := e.st.WaitInbox(ctx, "a", "sa", true, 5*time.Second); err != nil || len(msgs) != 0 || time.Since(start) > time.Second {
+		t.Fatalf("cancelled wait must end empty without error: %v %v %v", msgs, err, time.Since(start))
 	}
 	_, err = e.st.WaitInbox(bg, "other", "sa", true, time.Second)
 	wantErr(t, err, store.ErrSessionOwner)

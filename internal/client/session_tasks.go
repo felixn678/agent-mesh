@@ -21,12 +21,7 @@ func sessionTaskPath(session string, id int64, op string) string {
 // targets this host/session (or nobody); ErrNoTask when none. Fence must be
 // echoed on every later call.
 func (c *Client) SessionClaim(ctx context.Context, session string) (api.ClaimedTask, error) {
-	var t api.ClaimedTask
-	status, err := c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(session)+"/claim", nil, &t)
-	if err == nil && status == http.StatusNoContent {
-		return api.ClaimedTask{}, ErrNoTask
-	}
-	return t, err
+	return c.SessionClaimWith(ctx, session, api.SessionClaimRequest{})
 }
 
 // SessionHeartbeat extends the session's lease (30 min by default); a
@@ -70,4 +65,17 @@ func (c *Client) InboxWaitClaimable(ctx context.Context, session string, markRea
 	_, err := c.doWithTimeout(ctx, time.Duration(secs)*time.Second+10*time.Second, http.MethodGet,
 		"/api/v1/messages/inbox?"+q.Encode(), nil, &out)
 	return out, err
+}
+
+// SessionClaimWith is SessionClaim with a request body. Reuse the same
+// RequestID when retrying a claim whose response was lost: the hub then
+// returns the task this session already holds (same fence) instead of
+// claiming another one.
+func (c *Client) SessionClaimWith(ctx context.Context, session string, req api.SessionClaimRequest) (api.ClaimedTask, error) {
+	var t api.ClaimedTask
+	status, err := c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(session)+"/claim", req, &t)
+	if err == nil && status == http.StatusNoContent {
+		return api.ClaimedTask{}, ErrNoTask
+	}
+	return t, err
 }

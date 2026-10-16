@@ -115,8 +115,8 @@ func (s *Store) waitInbox(ctx context.Context, ownerHost, session string, markRe
 		case <-timer.C:
 			r, _, err = check() // final check, then give up
 			return r, err
-		case <-ctx.Done():
-			return api.InboxResponse{Messages: []api.Message{}}, ctx.Err()
+		case <-ctx.Done(): // client gone or hub shutting down: nothing to report
+			return api.InboxResponse{Messages: []api.Message{}}, nil
 		}
 	}
 }

@@ -25,7 +25,7 @@ WHERE (t.state = 'queued' OR (t.state = 'running' AND t.lease_expires_at < :now)
 
 const sessionClaimSQL = `
 UPDATE tasks SET state='running', claimed_by=:holder, fence=fence+1, attempts=attempts+1,
-  lease_expires_at=:now+:ttl, last_heartbeat_at=:now, updated_at=:now,
+  claim_request_id=:rid, lease_expires_at=:now+:ttl, last_heartbeat_at=:now, updated_at=:now,
   reason = CASE WHEN state='running' THEN 'lease expired on '||claimed_by ELSE reason END
 WHERE id = (SELECT t.id ` + sessionEligible + ` ORDER BY t.id LIMIT 1)
 RETURNING id, fence, repo, base_branch, prompt, permission_mode, tool_profile, max_budget_usd`
@@ -54,19 +54,23 @@ func (s *Store) sessionArgs(host, id string) []any {
 // ErrSessionNotFound, ErrSessionOwner (session on another host) and
 // ErrSessionEnded (ended or not seen within the alive window).
 func (s *Store) ClaimForSession(ctx context.Context, host, id string) (*api.ClaimedTask, error) {
+	return s.ClaimForSessionRequest(ctx, host, id, api.SessionClaimRequest{})
+}
+
+// ClaimForSessionRequest is ClaimForSession with an optional request id: a
+// retried claim with the same id returns the task the session already holds.
+func (s *Store) ClaimForSessionRequest(ctx context.Context, host, id string, req api.SessionClaimRequest) (*api.ClaimedTask, error) {
 	if !api.ValidSessionID(id) {
 		return nil, &api.ValidationError{Msg: "invalid session id"}
 	}
-	args := append(s.sessionArgs(host, id),
-		sql.Named("holder", SessionHolderPrefix+id), sql.Named("ttl", s.cfg.ttlFor(SessionHolderPrefix).Milliseconds()))
-	var c api.ClaimedTask
-	err := s.db.QueryRowContext(ctx, sessionClaimSQL, args...).
-		Scan(&c.ID, &c.Fence, &c.Repo, &c.BaseBranch, &c.Prompt, &c.PermissionMode, &c.ToolProfile, &c.MaxBudgetUSD)
-	if err == nil {
-		return &c, nil
+	if err := req.Validate(); err != nil {
+		return nil, err
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("session claim: %w", err)
+	c, err := s.claimOnce(ctx, SessionHolderPrefix+id, req.RequestID, func(q querier) (*api.ClaimedTask, error) {
+		return s.sessionClaim(ctx, q, host, id, req.RequestID)
+	})
+	if err != nil || c != nil {
+		return c, err
 	}
 	// No row: either nothing to claim, or the session is unusable.
 	sess, err := s.ownedSession(ctx, host, id)
@@ -77,6 +81,21 @@ func (s *Store) ClaimForSession(ctx context.Context, host, id string) (*api.Clai
 		return nil, ErrSessionEnded
 	}
 	return nil, nil
+}
+
+func (s *Store) sessionClaim(ctx context.Context, q querier, host, id, rid string) (*api.ClaimedTask, error) {
+	args := append(s.sessionArgs(host, id), sql.Named("rid", nullable(rid)),
+		sql.Named("holder", SessionHolderPrefix+id), sql.Named("ttl", s.cfg.ttlFor(SessionHolderPrefix).Milliseconds()))
+	var c api.ClaimedTask
+	err := q.QueryRowContext(ctx, sessionClaimSQL, args...).
+		Scan(&c.ID, &c.Fence, &c.Repo, &c.BaseBranch, &c.Prompt, &c.PermissionMode, &c.ToolProfile, &c.MaxBudgetUSD)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("session claim: %w", err)
+	}
+	return &c, nil
 }
 
 // ClaimableCount returns how many tasks the session could claim right now
