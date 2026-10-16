@@ -38,6 +38,24 @@ func gitRemote(ctx context.Context, cwd string) string {
 // long interactive task does not expire between turns. Best effort: one
 // refused heartbeat (e.g. a reaped task) does not skip the others.
 func heartbeatHeld(ctx context.Context, c *client.Client, session string) error {
+	return forHeld(ctx, c, session, func(t api.Task) error {
+		return c.SessionHeartbeat(ctx, session, t.ID, api.HeartbeatRequest{Fence: t.Fence})
+	})
+}
+
+// releaseHeld hands back every task this session still holds when it ends,
+// so another worker can take it at once instead of after the lease lapses.
+// Release keeps the attempt count (the work was not tried and failed).
+func releaseHeld(ctx context.Context, c *client.Client, session string) error {
+	return forHeld(ctx, c, session, func(t api.Task) error {
+		_, err := c.SessionRelease(ctx, session, t.ID, api.ReleaseRequest{Fence: t.Fence, Reason: "session ended"})
+		return err
+	})
+}
+
+// forHeld applies fn to every running task this session holds, continuing
+// past failures and joining their errors.
+func forHeld(ctx context.Context, c *client.Client, session string, fn func(api.Task) error) error {
 	tasks, err := c.ListTasks(ctx, api.StateRunning, time.Time{})
 	if err != nil {
 		return err
@@ -45,7 +63,7 @@ func heartbeatHeld(ctx context.Context, c *client.Client, session string) error 
 	var errs []error
 	for _, t := range tasks {
 		if t.ClaimedBy == store.SessionHolderPrefix+session {
-			if err := c.SessionHeartbeat(ctx, session, t.ID, api.HeartbeatRequest{Fence: t.Fence}); err != nil {
+			if err := fn(t); err != nil {
 				errs = append(errs, fmt.Errorf("task %d: %w", t.ID, err))
 			}
 		}
