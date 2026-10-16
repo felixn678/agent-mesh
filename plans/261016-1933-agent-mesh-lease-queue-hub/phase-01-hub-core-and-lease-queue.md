@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Hub core and lease queue"
-status: pending
+status: completed
 priority: P1
 effort: "8h"
 dependencies: []

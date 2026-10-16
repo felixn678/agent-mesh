@@ -1,0 +1,172 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/felixn678/agent-mesh/internal/api"
+)
+
+// claimSQL is one statement, so selection and the fence bump are atomic: two
+// claimers can never receive the same (id, fence). Expired running leases are
+// reclaimable immediately. Right-hand sides see pre-update column values.
+const claimSQL = `
+UPDATE tasks SET state='running', claimed_by=:host, fence=fence+1, attempts=attempts+1,
+  lease_expires_at=:now+:ttl, last_heartbeat_at=:now, updated_at=:now,
+  reason = CASE WHEN state='running' THEN 'lease expired on '||claimed_by ELSE reason END
+WHERE id = (SELECT id FROM tasks
+  WHERE (state='queued' OR (state='running' AND lease_expires_at < :now))
+    AND attempts < max_attempts
+    AND repo            IN (SELECT value FROM json_each(:repos))
+    AND permission_mode IN (SELECT value FROM json_each(:modes))
+    AND tool_profile    IN (SELECT value FROM json_each(:profiles))
+    AND max_budget_usd <= :budget_cap
+    AND (host IS NULL OR host = :host)
+  ORDER BY id LIMIT 1)
+RETURNING id, fence, repo, base_branch, prompt, permission_mode, tool_profile, max_budget_usd`
+
+func jsonList(v []string) string {
+	if v == nil {
+		v = []string{}
+	}
+	b, _ := json.Marshal(v) // []string cannot fail to marshal
+	return string(b)
+}
+
+// Claim hands the oldest eligible task to host, or (nil, nil) when none fits.
+func (s *Store) Claim(ctx context.Context, host string, req api.ClaimRequest) (*api.ClaimedTask, error) {
+	now := s.ms()
+	var c api.ClaimedTask
+	err := s.db.QueryRowContext(ctx, claimSQL,
+		sql.Named("host", host), sql.Named("now", now), sql.Named("ttl", s.cfg.TTL.Milliseconds()),
+		sql.Named("repos", jsonList(req.Repos)), sql.Named("modes", jsonList(req.Modes)),
+		sql.Named("profiles", jsonList(req.Profiles)), sql.Named("budget_cap", req.BudgetCap),
+	).Scan(&c.ID, &c.Fence, &c.Repo, &c.BaseBranch, &c.Prompt, &c.PermissionMode, &c.ToolProfile, &c.MaxBudgetUSD)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("claim: %w", err)
+	}
+	return &c, nil
+}
+
+// Heartbeat extends the lease. The fence is the authority; an expired lease
+// nobody reclaimed may be revived only within ReviveWindow.
+func (s *Store) Heartbeat(ctx context.Context, host string, id, fence int64) error {
+	now := s.ms()
+	var got int64
+	err := s.db.QueryRowContext(ctx, `UPDATE tasks SET lease_expires_at=:now+:ttl, last_heartbeat_at=:now, updated_at=:now
+	  WHERE id=:id AND fence=:fence AND claimed_by=:host AND state='running'
+	    AND lease_expires_at >= :now - :revive RETURNING id`,
+		sql.Named("now", now), sql.Named("ttl", s.cfg.TTL.Milliseconds()), sql.Named("id", id),
+		sql.Named("fence", fence), sql.Named("host", host), sql.Named("revive", s.cfg.ReviveWindow.Milliseconds()),
+	).Scan(&got)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("heartbeat: %w", err)
+	}
+	_, err = s.classify(ctx, host, id, fence)
+	if err == nil { // state matched no outcome set -> holder does not own a live lease
+		err = ErrLeaseLost
+	}
+	return err
+}
+
+// classify explains why a fenced update matched zero rows. It returns the
+// task state when the caller still owns (fence+host) the task, so callers can
+// detect an already-applied outcome; ErrCancelled when the owner's task was
+// cancelled; ErrLeaseLost when ownership moved; ErrNotFound for unknown ids.
+func (s *Store) classify(ctx context.Context, host string, id, fence int64) (string, error) {
+	var state, claimedBy string
+	var curFence int64
+	err := s.db.QueryRowContext(ctx, "SELECT state, fence, COALESCE(claimed_by,'') FROM tasks WHERE id=?", id).
+		Scan(&state, &curFence, &claimedBy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("classify: %w", err)
+	}
+	if curFence != fence || claimedBy != host {
+		return "", ErrLeaseLost
+	}
+	if state == api.StateCancelled {
+		return "", ErrCancelled
+	}
+	return state, nil
+}
+
+// finish runs a fenced terminal/handback update. okStates are the states that
+// mean "this exact outcome was already recorded", making replays idempotent.
+func (s *Store) finish(ctx context.Context, host string, id, fence int64, set string, okStates []string,
+	args ...any) (alreadyApplied bool, err error) {
+	named := append([]any{sql.Named("id", id), sql.Named("fence", fence), sql.Named("host", host),
+		sql.Named("now", s.ms())}, args...)
+	res, err := s.db.ExecContext(ctx, "UPDATE tasks SET "+set+", updated_at=:now "+
+		"WHERE id=:id AND fence=:fence AND claimed_by=:host AND state='running'", named...)
+	if err != nil {
+		return false, fmt.Errorf("update lease: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return false, nil
+	}
+	state, err := s.classify(ctx, host, id, fence)
+	if err != nil {
+		return false, err
+	}
+	for _, ok := range okStates {
+		if state == ok {
+			return true, nil
+		}
+	}
+	return false, ErrLeaseLost
+}
+
+// Complete records success. Replaying it with the same fence/host is a no-op
+// reported as alreadyApplied.
+func (s *Store) Complete(ctx context.Context, host string, id int64, r api.CompleteRequest) (bool, error) {
+	if err := r.Validate(); err != nil {
+		return false, err
+	}
+	return s.finish(ctx, host, id, r.Fence,
+		`state='done', branch=:branch, pr_url=:pr, session_id=:sess, cost_usd=cost_usd+:cost,
+		 publish_note=:note, lease_expires_at=NULL, finished_at=:now`,
+		[]string{api.StateDone},
+		sql.Named("branch", nullable(r.Branch)), sql.Named("pr", nullable(r.PRURL)),
+		sql.Named("sess", nullable(r.SessionID)), sql.Named("cost", r.CostUSD), sql.Named("note", nullable(r.PublishNote)))
+}
+
+// Fail ends the attempt. With Retry and attempts left the task is requeued,
+// otherwise it becomes stuck.
+func (s *Store) Fail(ctx context.Context, host string, id int64, r api.FailRequest) (bool, error) {
+	if err := r.Validate(); err != nil {
+		return false, err
+	}
+	ok := []string{api.StateStuck}
+	if r.Retry {
+		ok = append(ok, api.StateQueued)
+	}
+	return s.finish(ctx, host, id, r.Fence,
+		`state=CASE WHEN :retry AND attempts<max_attempts THEN 'queued' ELSE 'stuck' END,
+		 finished_at=CASE WHEN :retry AND attempts<max_attempts THEN NULL ELSE :now END,
+		 cost_usd=cost_usd+:cost, reason=:reason, worktree=:wt, lease_expires_at=NULL`,
+		ok, sql.Named("retry", r.Retry), sql.Named("cost", r.CostUSD),
+		sql.Named("reason", nullable(r.Reason)), sql.Named("wt", nullable(r.Worktree)))
+}
+
+// Release hands the task back to the queue without consuming an attempt.
+func (s *Store) Release(ctx context.Context, host string, id int64, r api.ReleaseRequest) (bool, error) {
+	if err := r.Validate(); err != nil {
+		return false, err
+	}
+	return s.finish(ctx, host, id, r.Fence,
+		`state='queued', attempts=attempts-1, reason=:reason, lease_expires_at=NULL`,
+		[]string{api.StateQueued},
+		sql.Named("reason", "released by "+host+": "+r.Reason))
+}

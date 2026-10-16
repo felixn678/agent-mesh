@@ -1,3 +1,10 @@
 # Local agent memory (may contain host/network details)
 .claude/agent-memory/
 .claude/settings.local.json
+
+# Build output, databases and secrets
+/bin/
+*.db
+*.db-*
+*.token
+.envrc
