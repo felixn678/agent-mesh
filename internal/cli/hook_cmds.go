@@ -116,7 +116,9 @@ func hookEvent(ctx context.Context, stdin io.Reader, event string) ([]byte, *hoo
 	case "stop":
 		out, err = h.stop()
 	case "session-end":
-		err = c.EndSession(ctx, in.SessionID)
+		// End first (one cheap call), then hand back held tasks; both stay
+		// within the hook's time budget and fail open.
+		err = errors.Join(c.EndSession(ctx, in.SessionID), releaseHeld(ctx, c, in.SessionID))
 	default:
 		err = fmt.Errorf("unknown hook event %q", event)
 	}
