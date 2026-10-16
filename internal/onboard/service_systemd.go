@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/felixn678/agent-mesh/internal/config"
 )
 
 // systemdManager manages systemd --user units named agent-mesh-<name>.service.
@@ -23,13 +25,18 @@ func (m *systemdManager) ctl(ctx context.Context, args ...string) ([]byte, error
 }
 
 // renderSystemd mirrors deploy/systemd: restart on failure, private umask.
-func renderSystemd(bin, path string, u Unit) string {
+// cfgDir, when set, is passed on as AGENTMESH_CONFIG_DIR (see Env.ConfigDirOverride).
+func renderSystemd(bin, path, cfgDir string, u Unit) string {
 	after := ""
 	extra := "TimeoutStopSec=60\nKillMode=mixed\n" // let the daemon release leases before workers die
 	if u.Name == "daemon" {
 		after = "After=agent-mesh-hub.service\n"
 	} else {
 		extra = ""
+	}
+	cfgEnv := ""
+	if cfgDir != "" {
+		cfgEnv = fmt.Sprintf("Environment=\"%s=%s\"\n", config.ConfigDirEnv, systemdEscape(cfgDir))
 	}
 	return fmt.Sprintf(`[Unit]
 Description=%s
@@ -38,13 +45,13 @@ Description=%s
 [Service]
 ExecStart=%s %s
 Environment="PATH=%s"
-Restart=on-failure
+%sRestart=on-failure
 RestartSec=10
 UMask=0077
 %s
 [Install]
 WantedBy=default.target
-`, u.Desc, after, bin, strings.Join(u.Args, " "), systemdEscape(path), extra)
+`, u.Desc, after, bin, strings.Join(u.Args, " "), systemdEscape(path), cfgEnv, extra)
 }
 
 func (m *systemdManager) Install(ctx context.Context, u Unit) error {
@@ -56,7 +63,7 @@ func (m *systemdManager) Install(ctx context.Context, u Unit) error {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, m.unitName(u.Name))
-	want := []byte(renderSystemd(m.e.Binary, m.e.servicePath(), u))
+	want := []byte(renderSystemd(m.e.Binary, m.e.servicePath(), m.e.ConfigDirOverride, u))
 	cur, _ := os.ReadFile(path)
 	changed := !bytes.Equal(cur, want)
 	if changed {

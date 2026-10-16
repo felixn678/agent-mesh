@@ -309,6 +309,7 @@ func TestSSHAgentOnlyForOptedInProfiles(t *testing.T) {
 func TestDenyFloorCoversConfigDirsAndSecrets(t *testing.T) {
 	cfgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	t.Setenv("AGENTMESH_CONFIG_DIR", filepath.Join(cfgHome, "agent-mesh")) // macOS ignores XDG_CONFIG_HOME
 	c := validTestConfig(t)
 	c.StateDir = "/srv/am/state"
 	c.ConfigDir = "/Users/u/Library/Application Support/agent-mesh"

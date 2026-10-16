@@ -242,7 +242,7 @@ func TestRenderPlistIsValidXML(t *testing.T) {
 	home := "/Users/a&b"
 	bin := home + "/.local/bin/agent-mesh"
 	path := home + "/.local/bin:/opt/homebrew/bin:/usr/bin"
-	doc := parsePlist(t, renderPlist(home, bin, path, Unit{Name: "hub", Args: []string{"hub", "--note=<x>"}}, "com.agentmesh.hub"))
+	doc := parsePlist(t, renderPlist(home, bin, path, "", Unit{Name: "hub", Args: []string{"hub", "--note=<x>"}}, "com.agentmesh.hub"))
 	for _, k := range []string{"Label", "ProgramArguments", "EnvironmentVariables", "RunAtLoad",
 		"KeepAlive", "ThrottleInterval", "Umask", "StandardOutPath", "StandardErrorPath"} {
 		if !contains(doc.keys, k) {
@@ -272,4 +272,26 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// AGENTMESH_CONFIG_DIR set when up/join ran is handed to the services, so
+// they read the same identity; unset, the units carry no such variable.
+func TestUnitsCarryConfigDirOverrideOnlyWhenSet(t *testing.T) {
+	u := Unit{Name: "daemon", Args: []string{"daemon"}, Desc: "d"}
+	dir := "/Users/x/mesh b&c"
+	doc := parsePlist(t, renderPlist("/Users/x", "/Users/x/bin/agent-mesh", "/usr/bin", dir, u, "com.agentmesh.daemon"))
+	if doc.env["AGENTMESH_CONFIG_DIR"] != dir || doc.env["PATH"] != "/usr/bin" {
+		t.Errorf("plist env %v", doc.env)
+	}
+	doc = parsePlist(t, renderPlist("/Users/x", "/Users/x/bin/agent-mesh", "/usr/bin", "", u, "com.agentmesh.daemon"))
+	if _, ok := doc.env["AGENTMESH_CONFIG_DIR"]; ok {
+		t.Errorf("plist env without override: %v", doc.env)
+	}
+	unit := renderSystemd("/b/agent-mesh", "/usr/bin", "/srv/mesh%a", u)
+	if !strings.Contains(unit, "Environment=\"AGENTMESH_CONFIG_DIR=/srv/mesh%%a\"\n") {
+		t.Errorf("systemd unit lacks escaped override:\n%s", unit)
+	}
+	if strings.Contains(renderSystemd("/b/agent-mesh", "/usr/bin", "", u), "AGENTMESH_CONFIG_DIR") {
+		t.Error("systemd unit has override although none was set")
+	}
 }

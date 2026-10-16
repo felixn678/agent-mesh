@@ -40,14 +40,17 @@ func (ExecRunner) Output(ctx context.Context, name string, args ...string) ([]by
 type Env struct {
 	Home      string // user home directory
 	ConfigDir string // e.g. ~/.config/agent-mesh (0700)
-	DataDir   string // e.g. ~/.local/share/agent-mesh (0700)
-	Binary    string // absolute path of the agent-mesh binary services run
-	GOOS      string
-	In        io.Reader // stdin; join reads the invite code from it
-	Out       io.Writer
-	Runner    Runner
-	Mgr       Manager
-	Hostname  func() (string, error)
+	// ConfigDirOverride is $AGENTMESH_CONFIG_DIR as set when up/join ran
+	// ("" when unset). Services get it too, so they read the same identity.
+	ConfigDirOverride string
+	DataDir           string // e.g. ~/.local/share/agent-mesh (0700)
+	Binary            string // absolute path of the agent-mesh binary services run
+	GOOS              string
+	In                io.Reader // stdin; join reads the invite code from it
+	Out               io.Writer
+	Runner            Runner
+	Mgr               Manager
+	Hostname          func() (string, error)
 }
 
 // NewEnv builds the production Env from the current user's directories.
@@ -67,7 +70,7 @@ func NewEnv(out io.Writer) (*Env, error) {
 	if r, err := filepath.EvalSymlinks(bin); err == nil {
 		bin = r
 	}
-	e := &Env{Home: home, ConfigDir: cfg, DataDir: filepath.Join(home, ".local", "share", "agent-mesh"),
+	e := &Env{Home: home, ConfigDir: cfg, ConfigDirOverride: os.Getenv(config.ConfigDirEnv), DataDir: filepath.Join(home, ".local", "share", "agent-mesh"),
 		Binary: bin, GOOS: runtime.GOOS, In: os.Stdin, Out: out, Runner: ExecRunner{}, Hostname: os.Hostname}
 	e.Mgr = NewManager(e)
 	return e, nil

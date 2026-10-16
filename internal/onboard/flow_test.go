@@ -264,7 +264,7 @@ func TestServicePathAndDoctorWarning(t *testing.T) {
 	if !strings.HasPrefix(path, "/opt/nvm/bin:/usr/bin:") || !strings.Contains(path, "/usr/local/bin") {
 		t.Fatalf("service path = %s", path)
 	}
-	unit := renderSystemd(e.Binary, path, Unit{Name: "daemon", Args: []string{"daemon"}})
+	unit := renderSystemd(e.Binary, path, "", Unit{Name: "daemon", Args: []string{"daemon"}})
 	dir := filepath.Join(e.Home, ".config", "systemd", "user")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)

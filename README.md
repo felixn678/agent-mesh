@@ -96,6 +96,8 @@ Manual setup (tokens, units, editing `hub.toml` by hand) is still supported: see
 | hook log | `~/.local/state/agent-mesh/hook.log` (`$XDG_STATE_HOME`) | same |
 | service logs | `journalctl --user -u agent-mesh-hub` / `-daemon` | `~/Library/Logs/agent-mesh/` |
 
+`AGENTMESH_CONFIG_DIR=/abs/path` overrides the config dir on both systems (for example a second identity on one machine). Set it before `up`/`join` (the services they install inherit it) and export it in your shell profile so Claude sessions, whose hooks and MCP helper run `agent-mesh`, use the same directory. It must be an absolute path.
+
 CLI commands resolve the hub URL as `$AGENTMESH_URL`, else `hub_url` in `client.toml`, else in `daemon.toml`, else `http://127.0.0.1:8787`. Tokens: `$AGENTMESH_TOKEN`, else `session.token` (task add/list/get, hosts); cancel, requeue and `report` prefer `admin.token`. Hooks, the waiter and the MCP server use only the session token (`$AGENTMESH_SESSION_TOKEN` or `session.token`) and send it only to the hub in `client.toml`/`daemon.toml`: they ignore `$AGENTMESH_URL`, which a project's `.claude/settings.json` could set.
 
 ### Terminal commands
