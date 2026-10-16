@@ -63,19 +63,38 @@ func TestLines(t *testing.T) {
 	}
 	h := api.Host{Name: "box", HostLoad: api.HostLoad{Cores: 8, RAMGB: 8, Slots: 1, CPUPct: 85, MemAvailPct: 70, Running: 1, ThrottleReason: "cpu 85%", CPUModel: "x86"},
 		LastSeenAt: now.Add(-20 * time.Second).UnixMilli()}
-	if got := HostLine(h, now, false); got != "box: 8c/8GB → 1 slot, throttled: cpu 85%, running 1, cpu 85% mem 30%, seen 20s ago" {
+	if got := HostLine(h, now, false, ""); got != "box: 8c/8GB → 1 slot, throttled: cpu 85%, running 1, cpu 85% mem 30%, seen 20s ago" {
 		t.Fatalf("host line %q", got)
 	}
-	if got := HostLine(h, now, true); !strings.HasSuffix(got, ", cpu_model x86") {
+	if got := HostLine(h, now, true, ""); !strings.HasSuffix(got, ", cpu_model x86") {
 		t.Fatalf("verbose host line %q", got)
 	}
 	s := api.Session{ID: "0123456789", Host: "host-b", Cwd: "/w/lumio", Name: "fe", Worker: true, LastSeenAt: now.Add(-3 * time.Minute).UnixMilli()}
-	if got := SessionLine(s, now); got != "01234567 host-b lumio [fe] seen 3m ago" {
+	if got := SessionLine(s, now, ""); got != "01234567 host-b lumio [fe] seen 3m ago" {
 		t.Fatalf("session line %q", got)
 	}
 	s.Worker = false
-	if got := SessionLine(s, now); got != "01234567 host-b lumio [fe] worker:off seen 3m ago" {
+	if got := SessionLine(s, now, ""); got != "01234567 host-b lumio [fe] worker:off seen 3m ago" {
 		t.Fatalf("non-worker session line %q", got)
+	}
+}
+
+func TestVersionSkewMarks(t *testing.T) {
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	s := api.Session{ID: "0123456789", Host: "host-b", Cwd: "/w/lumio", Worker: true, AgentVersion: "v0.1.0", LastSeenAt: now.UnixMilli()}
+	if got := SessionLine(s, now, "v0.1.2"); got != "01234567 host-b lumio seen 0s ago, version v0.1.0 ≠ hub v0.1.2 → run `agent-mesh update` there" {
+		t.Fatalf("skewed session line %q", got)
+	}
+	h := api.Host{Name: "box", HostLoad: api.HostLoad{Cores: 8, RAMGB: 8, Slots: 1, AgentVersion: "v0.2.0"}}
+	if got := HostLine(h, now, false, "v0.1.2"); !strings.HasSuffix(got, ", version v0.2.0 ≠ hub v0.1.2 → run `agent-mesh update` on the hub machine") {
+		t.Fatalf("skewed host line %q", got)
+	}
+	// Same version, dev builds and peers or hubs that never reported one: no mark.
+	for _, p := range [][2]string{{"v0.1.2", "v0.1.2"}, {"dev", "v0.1.2"}, {"", "v0.1.2"}, {"v0.1.0", ""}} {
+		s.AgentVersion = p[0]
+		if got := SessionLine(s, now, p[1]); strings.Contains(got, "version") {
+			t.Errorf("%v: %q", p, got)
+		}
 	}
 }
 

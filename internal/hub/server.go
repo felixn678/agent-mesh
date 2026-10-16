@@ -12,6 +12,7 @@ import (
 	"github.com/felixn678/agent-mesh/internal/api"
 	"github.com/felixn678/agent-mesh/internal/mcptools"
 	"github.com/felixn678/agent-mesh/internal/store"
+	"github.com/felixn678/agent-mesh/internal/version"
 )
 
 // Server is the hub HTTP server.
@@ -53,7 +54,9 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/hosts", s.anyToken(s.listHosts))
 	m.HandleFunc("GET /api/v1/report", s.anyToken(s.report))
 	m.HandleFunc("GET /api/v1/whoami", s.authed(anyone, func(w http.ResponseWriter, _ *http.Request, p api.Principal) {
-		writeJSON(w, http.StatusOK, api.WhoAmIFor(p))
+		who := api.WhoAmIFor(p)
+		who.HubVersion = version.Version
+		writeJSON(w, http.StatusOK, who)
 	}))
 	// Host (daemon) tokens only: lease and load.
 	m.HandleFunc("POST /api/v1/claim", s.hostOnly(s.claim))
@@ -76,6 +79,7 @@ func (s *Server) routes() {
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		w.Header().Set(version.Header, version.Version)
 		s.mux.ServeHTTP(w, r)
 	})
 }

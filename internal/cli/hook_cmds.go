@@ -14,6 +14,7 @@ import (
 	"github.com/felixn678/agent-mesh/internal/api"
 	"github.com/felixn678/agent-mesh/internal/client"
 	"github.com/felixn678/agent-mesh/internal/mcptools/format"
+	"github.com/felixn678/agent-mesh/internal/version"
 )
 
 // hookTimeout bounds every hook's hub traffic; Claude's own hook timeout (3 s
@@ -133,11 +134,12 @@ type hookCtx struct {
 	shown   []int64 // message ids rendered into the output, acked after it is written
 }
 
-// register refreshes the session; repo is sent only at session start (an
-// empty repo keeps the stored one).
+// register refreshes the session and reports this binary's version; repo is
+// sent only at session start (an empty repo keeps the stored one).
 func (h *hookCtx) register(repo string, worker *bool) (api.Session, error) {
 	return h.c.RegisterSession(h.ctx, api.RegisterSessionRequest{
-		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo, Worker: worker})
+		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo, Worker: worker,
+		AgentVersion: version.Version})
 }
 
 // unread renders the session's unread messages ("" if none) without marking
@@ -159,6 +161,9 @@ func (h *hookCtx) sessionStart() ([]byte, error) {
 		return nil, err
 	}
 	text := sessionStartText(s, worker)
+	if skew := version.LocalSkew(version.Version, h.c.HubVersion()); skew != "" {
+		text += "\n[agentmesh] " + skew + " (tell the user once)."
+	}
 	msgs, err := h.unread()
 	if err != nil {
 		return nil, err

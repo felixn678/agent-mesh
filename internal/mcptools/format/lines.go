@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/felixn678/agent-mesh/internal/api"
+	"github.com/felixn678/agent-mesh/internal/version"
 )
 
 // TaskLine is the one-line task summary, e.g.
@@ -98,7 +99,8 @@ func TaskDetail(t api.Task) string {
 
 // HostLine is the one-line host view built on api.Host.Summary, e.g.
 // `box: 8c/8GB → 1 slot, throttled: cpu 85%, running 1, cpu 85% mem 30%, seen 20s ago`.
-func HostLine(h api.Host, now time.Time, verbose bool) string {
+// A daemon whose version differs from hubVersion gets a trailing skew note.
+func HostLine(h api.Host, now time.Time, verbose bool, hubVersion string) string {
 	var b strings.Builder
 	b.WriteString(h.Summary())
 	fmt.Fprintf(&b, ", running %d, cpu %.0f%% mem %.0f%%", h.Running, h.CPUPct, 100-h.MemAvailPct)
@@ -112,11 +114,12 @@ func HostLine(h api.Host, now time.Time, verbose bool) string {
 			}
 		}
 	}
-	return b.String()
+	return b.String() + skewNote(h.AgentVersion, hubVersion)
 }
 
-// SessionLine is `<id8> <host> <cwd-basename> [<name>] seen 3m ago`.
-func SessionLine(s api.Session, now time.Time) string {
+// SessionLine is `<id8> <host> <cwd-basename> [<name>] seen 3m ago`, plus a
+// skew note when the session's hooks run a different version than hubVersion.
+func SessionLine(s api.Session, now time.Time, hubVersion string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s %s", ID8(s.ID), s.Host, Clean(Base(s.Cwd)))
 	if s.Name != "" {
@@ -126,7 +129,17 @@ func SessionLine(s api.Session, now time.Time) string {
 		b.WriteString(" worker:off")
 	}
 	b.WriteString(" seen " + Ago(now, s.LastSeenAt))
-	return b.String()
+	return b.String() + skewNote(s.AgentVersion, hubVersion)
+}
+
+// skewNote is ", version v0.1.0 ≠ hub v0.1.2 → run `agent-mesh update` there",
+// or "" when the versions match or either is unknown. Skew only accepts
+// plain release versions, so a peer cannot inject text through it.
+func skewNote(v, hubVersion string) string {
+	if s := version.Skew(v, hubVersion); s != "" {
+		return ", version " + s
+	}
+	return ""
 }
 
 // ID8 shortens a session id for display.

@@ -13,9 +13,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/felixn678/agent-mesh/internal/api"
+	"github.com/felixn678/agent-mesh/internal/version"
 )
 
 // CallTimeout bounds each request.
@@ -59,9 +61,10 @@ func (e *HTTPError) Error() string {
 
 // Client talks to one hub with one token.
 type Client struct {
-	baseURL string
-	token   string
-	http    *http.Client
+	baseURL    string
+	token      string
+	http       *http.Client
+	hubVersion atomic.Value // string from the last response's version header
 }
 
 // New builds a client; baseURL is e.g. http://127.0.0.1:8787.
@@ -99,6 +102,7 @@ func (c *Client) doWithTimeout(ctx context.Context, timeout time.Duration, metho
 		return 0, err
 	}
 	defer resp.Body.Close()
+	c.hubVersion.Store(resp.Header.Get(version.Header))
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return resp.StatusCode, err
@@ -114,6 +118,13 @@ func (c *Client) doWithTimeout(ctx context.Context, timeout time.Duration, metho
 		}
 	}
 	return resp.StatusCode, nil
+}
+
+// HubVersion is the hub's version as reported on the last response; "" before
+// any response and from hubs too old to send it.
+func (c *Client) HubVersion() string {
+	v, _ := c.hubVersion.Load().(string)
+	return v
 }
 
 func decodeError(status int, data []byte) error {

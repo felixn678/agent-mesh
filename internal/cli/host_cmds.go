@@ -45,7 +45,7 @@ func runHosts(ctx context.Context, std cmdIO, args []string) error {
 	}
 	now := time.Now()
 	for _, h := range hosts {
-		fmt.Fprintln(std.out, format.HostLine(h, now, *verbose))
+		fmt.Fprintln(std.out, format.HostLine(h, now, *verbose, c.HubVersion()))
 	}
 	if *sessions {
 		return printSessions(ctx, std, c, now)
@@ -82,7 +82,7 @@ func printSessions(ctx context.Context, std cmdIO, c *client.Client, now time.Ti
 	}
 	fmt.Fprintf(std.out, "sessions (%d live):\n", len(list))
 	for _, s := range list {
-		fmt.Fprintln(std.out, "  "+format.SessionLine(s, now))
+		fmt.Fprintln(std.out, "  "+format.SessionLine(s, now, c.HubVersion()))
 	}
 	return nil
 }

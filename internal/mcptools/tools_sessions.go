@@ -9,6 +9,7 @@ import (
 
 	"github.com/felixn678/agent-mesh/internal/api"
 	"github.com/felixn678/agent-mesh/internal/mcptools/format"
+	"github.com/felixn678/agent-mesh/internal/version"
 )
 
 // maxSessionLines bounds the sessions tool output.
@@ -50,7 +51,7 @@ func (t tools) sessions(ctx context.Context, _ *mcp.CallToolRequest, _ struct{})
 			lines = append(lines, "…")
 			break
 		}
-		lines = append(lines, format.SessionLine(s, now))
+		lines = append(lines, format.SessionLine(s, now, version.Version))
 	}
 	return textResult(strings.Join(lines, "\n")), nil, nil
 }
@@ -64,7 +65,7 @@ func (t tools) send(ctx context.Context, _ *mcp.CallToolRequest, in SendIn) (*mc
 	if err != nil {
 		return storeErr(err), nil, nil
 	}
-	return textResult("sent message " + strconv.FormatInt(m.ID, 10) + " to " + format.SessionLine(to, t.st.Now())), nil, nil
+	return textResult("sent message " + strconv.FormatInt(m.ID, 10) + " to " + format.SessionLine(to, t.st.Now(), version.Version)), nil, nil
 }
 
 // resolveTarget maps a full id, unique prefix (≥4 chars) or unique name to a
@@ -95,7 +96,7 @@ func (t tools) resolveTarget(ctx context.Context, to string) (api.Session, *mcp.
 	now := t.st.Now()
 	lines := make([]string, len(cands))
 	for i, s := range cands {
-		lines[i] = format.SessionLine(s, now)
+		lines[i] = format.SessionLine(s, now, version.Version)
 	}
 	return api.Session{}, errResult("%q is ambiguous; candidates:\n%s", to, strings.Join(lines, "\n"))
 }
