@@ -175,6 +175,13 @@ func (c *Client) Hosts(ctx context.Context) ([]api.Host, error) {
 	return out, err
 }
 
+// WhoAmI reports the kind of token this client presents (admin, host or session).
+func (c *Client) WhoAmI(ctx context.Context) (api.WhoAmI, error) {
+	var out api.WhoAmI
+	_, err := c.do(ctx, http.MethodGet, "/api/v1/whoami", nil, &out)
+	return out, err
+}
+
 // Report fetches the markdown morning report; zero since uses the hub default.
 func (c *Client) Report(ctx context.Context, since time.Time) (string, error) {
 	path := "/api/v1/report"

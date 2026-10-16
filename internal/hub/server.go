@@ -52,6 +52,9 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/tasks/{id}", s.anyToken(s.getTask))
 	m.HandleFunc("GET /api/v1/hosts", s.anyToken(s.listHosts))
 	m.HandleFunc("GET /api/v1/report", s.anyToken(s.report))
+	m.HandleFunc("GET /api/v1/whoami", s.authed(anyone, func(w http.ResponseWriter, _ *http.Request, p api.Principal) {
+		writeJSON(w, http.StatusOK, api.WhoAmIFor(p))
+	}))
 	// Host (daemon) tokens only: lease and load.
 	m.HandleFunc("POST /api/v1/claim", s.hostOnly(s.claim))
 	m.HandleFunc("POST /api/v1/hosts/load", s.hostOnly(s.hostLoad))

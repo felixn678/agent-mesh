@@ -77,7 +77,8 @@ func Invite(ctx context.Context, e *Env, args []string) error {
 	if isLoopback(hubURL) {
 		e.printf("warning: %s is loopback; other machines cannot reach it. Rebind with: agent-mesh up --listen <tailscale-ip>:8787\n  then re-run invite with --url http://<tailscale-ip>:8787\n", hubURL)
 	}
-	e.printf("\nRun this on %q (it contains secrets: send it over a private channel, do not paste it anywhere public):\n\n  agent-mesh join %s %s\n\n", host, hubURL, enc)
+	e.printf("\nOn %q run (the code is a secret: send it over a private channel, never paste it anywhere public):\n\n  agent-mesh join %s\n\npaste this code when asked: %s\n\n"+
+		"(Entering the code at the prompt keeps it out of shell history and the process list;\n `agent-mesh join %s <code>` also works but exposes it there.)\n", host, hubURL, enc, hubURL)
 	return nil
 }
 

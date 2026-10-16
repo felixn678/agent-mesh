@@ -2,6 +2,9 @@ package onboard
 
 import (
 	"context"
+	"github.com/felixn678/agent-mesh/internal/hub"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -40,7 +43,7 @@ func TestUpInviteJoinDoctorEndToEnd(t *testing.T) {
 	if hubMgr.reloads != 1 {
 		t.Errorf("reloads = %d, want 1", hubMgr.reloads)
 	}
-	if !strings.Contains(hubOut.String(), "contains secrets") {
+	if !strings.Contains(hubOut.String(), "is a secret") {
 		t.Error("invite output lacks secrets warning")
 	}
 	arg := joinLine(t, hubOut.String())
@@ -119,7 +122,10 @@ func TestInviteReloadsViaPidfileWhenNoService(t *testing.T) {
 	if err := Up(ctx, e, []string{"--listen", freeAddr(t)}); err != nil {
 		t.Fatal(err)
 	}
-	mgr.running = false // service manager does not own the hub
+	mgr.running = false     // service manager does not own the hub
+	orig := hub.ProcessArgs // the in-process hub is the test binary; pose as the real thing
+	hub.ProcessArgs = func(int) ([]string, error) { return []string{"/bin/agent-mesh", "hub"}, nil }
+	t.Cleanup(func() { hub.ProcessArgs = orig })
 	out.Reset()
 	if err := Invite(ctx, e, []string{"other"}); err != nil {
 		t.Fatalf("invite: %v\n%s", err, out)
@@ -180,5 +186,97 @@ func TestDoctorFailsOnLooseTokenAndMissingTool(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("doctor output lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestJoinReadsInviteFromStdin(t *testing.T) {
+	ctx := context.Background()
+	hubEnv, hubOut, _ := newTestEnv(t, "box")
+	useHome(t, hubEnv)
+	listen := freeAddr(t)
+	if err := Up(ctx, hubEnv, []string{"--listen", listen, "--name", "box"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Invite(ctx, hubEnv, []string{"laptop"}); err != nil {
+		t.Fatalf("invite: %v\n%s", err, hubOut)
+	}
+	arg := joinLine(t, hubOut.String())
+	for _, form := range [][]string{{arg[0]}, {arg[0], "-"}} {
+		joiner, joinOut, _ := newTestEnv(t, "laptop")
+		joiner.In = strings.NewReader(arg[1] + "\n")
+		if err := Join(ctx, joiner, append(form, "--no-service")); err != nil {
+			t.Fatalf("join %v: %v\n%s", form, err, joinOut)
+		}
+		if !strings.Contains(readFile(t, joiner.Path("daemon.toml")), "http://"+listen) {
+			t.Errorf("join %v did not write daemon.toml", form)
+		}
+	}
+	empty, _, _ := newTestEnv(t, "laptop")
+	empty.In = strings.NewReader("")
+	if err := Join(ctx, empty, []string{arg[0]}); err == nil {
+		t.Error("join with empty stdin succeeded")
+	}
+}
+
+func TestDoctorRejectsSwappedTokens(t *testing.T) {
+	ctx := context.Background()
+	e, out, _ := newTestEnv(t, "box")
+	useHome(t, e)
+	if err := Up(ctx, e, []string{"--listen", freeAddr(t), "--name", "box"}); err != nil {
+		t.Fatal(err)
+	}
+	host, sess := readFile(t, e.Path("host.token")), readFile(t, e.Path("session.token"))
+	if err := os.WriteFile(e.Path("host.token"), []byte(sess), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(e.Path("session.token"), []byte(host), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := Doctor(ctx, e, nil); err == nil || !strings.Contains(out.String(), "session token but a host token is required") {
+		t.Fatalf("swapped tokens passed doctor: %v\n%s", err, out)
+	}
+}
+
+func TestUpListenChangeTellsToRerunSetupClaude(t *testing.T) {
+	ctx := context.Background()
+	e, out, _ := newTestEnv(t, "box")
+	useHome(t, e)
+	if err := Up(ctx, e, []string{"--no-service", "--name", "box"}); err != nil {
+		t.Fatal(err)
+	}
+	listen := freeAddr(t)
+	out.Reset()
+	if err := Up(ctx, e, []string{"--no-service", "--name", "box", "--listen", listen}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "agent-mesh setup-claude") || !strings.Contains(readFile(t, e.Path("client.toml")), "http://"+listen) {
+		t.Errorf("client.toml/hint not updated:\n%s", out)
+	}
+}
+
+func TestServicePathAndDoctorWarning(t *testing.T) {
+	e, _, _ := newTestEnv(t, "box")
+	r := newFakeRunner()
+	r.paths = map[string]string{"claude": "/opt/nvm/bin/claude", "git": "/usr/bin/git"}
+	e.Runner = r
+	path := e.servicePath()
+	if !strings.HasPrefix(path, "/opt/nvm/bin:/usr/bin:") || !strings.Contains(path, "/usr/local/bin") {
+		t.Fatalf("service path = %s", path)
+	}
+	unit := renderSystemd(e.Binary, path, Unit{Name: "daemon", Args: []string{"daemon"}})
+	dir := filepath.Join(e.Home, ".config", "systemd", "user")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "agent-mesh-daemon.service"), []byte(unit), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res := servicePathCheck(e); res.Status != Pass {
+		t.Errorf("good unit: %+v", res)
+	}
+	r.paths["claude"] = "/elsewhere/claude"
+	if res := servicePathCheck(e); res.Status != Warn || !strings.Contains(res.Detail, "/elsewhere") {
+		t.Errorf("stale unit: %+v", res)
 	}
 }

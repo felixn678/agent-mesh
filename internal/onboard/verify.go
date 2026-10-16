@@ -16,6 +16,26 @@ func verifyToken(ctx context.Context, hubURL, token string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	_, err := client.New(hubURL, token).Hosts(ctx)
+	return explainHubErr(hubURL, err)
+}
+
+// verifyKind checks that token is accepted and is of the given kind
+// ("admin", "host" or "session"): a swapped token passes verifyToken but
+// every call of the wrong role is refused with 403.
+func verifyKind(ctx context.Context, hubURL, token, kind string) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	who, err := client.New(hubURL, token).WhoAmI(ctx)
+	if err := explainHubErr(hubURL, err); err != nil {
+		return err
+	}
+	if who.Kind != kind {
+		return fmt.Errorf("token is a %s token but a %s token is required (swapped files? re-run agent-mesh join)", who.Kind, kind)
+	}
+	return nil
+}
+
+func explainHubErr(hubURL string, err error) error {
 	var he *client.HTTPError
 	switch {
 	case err == nil:

@@ -33,7 +33,7 @@ func (m *launchdManager) ctl(ctx context.Context, args ...string) error {
 }
 
 // renderPlist mirrors deploy/launchd: keep alive, private umask (63 = 0077).
-func renderPlist(home, bin string, u Unit, label string) string {
+func renderPlist(home, bin, path string, u Unit, label string) string {
 	var args strings.Builder
 	for _, a := range append([]string{bin}, u.Args...) {
 		fmt.Fprintf(&args, "    <string>%s</string>\n", html.EscapeString(a))
@@ -67,7 +67,7 @@ func renderPlist(home, bin string, u Unit, label string) string {
   <string>%s</string>
 </dict>
 </plist>
-`, label, args.String(), html.EscapeString(home+"/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"), log, log)
+`, label, args.String(), html.EscapeString(path), log, log)
 }
 
 func (m *launchdManager) Install(ctx context.Context, u Unit) error {
@@ -78,7 +78,7 @@ func (m *launchdManager) Install(ctx context.Context, u Unit) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	want := []byte(renderPlist(m.e.Home, m.e.Binary, u, m.label(u.Name)))
+	want := []byte(renderPlist(m.e.Home, m.e.Binary, m.e.servicePath(), u, m.label(u.Name)))
 	cur, _ := os.ReadFile(path)
 	changed := !bytes.Equal(cur, want)
 	running, _ := m.Running(ctx, u.Name)

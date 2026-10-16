@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/felixn678/agent-mesh/internal/config"
@@ -14,7 +17,8 @@ import (
 )
 
 // Bind retry policy: the tailnet/loopback address may not exist yet at boot.
-const (
+// Variables so tests can shorten them.
+var (
 	bindRetryEvery = 5 * time.Second
 	bindRetryMax   = 2 * time.Minute
 )
@@ -41,7 +45,14 @@ func ListenWithRetry(ctx context.Context, addr string, every, max time.Duration)
 
 // Run is the `agent-mesh hub` entry point: open and migrate the database,
 // bind (with retry), then grace, reaper and serve until ctx is cancelled.
+//
+// SIGHUP handling is installed first, so a reload requested while the hub is
+// still opening the database or waiting for its address is queued (not fatal)
+// and applied once serving starts.
 func Run(ctx context.Context, args []string) error {
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
 	fs := flag.NewFlagSet("hub", flag.ContinueOnError)
 	dir, err := config.DefaultDir()
 	if err != nil {
@@ -74,6 +85,6 @@ func Run(ctx context.Context, args []string) error {
 	defer ln.Close()
 	slog.Info("hub listening", "addr", ln.Addr().String())
 	srv := NewServer(cfg, store.New(db, nil, cfg.Lease()))
-	defer srv.watchReload(ctx, *path)()
+	defer srv.watchReload(ctx, *path, hup)()
 	return srv.Serve(ctx, ln)
 }

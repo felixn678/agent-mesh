@@ -100,6 +100,7 @@ func runChecks(ctx context.Context, e *Env) []Result {
 		}
 	}
 	add(toolChecks(ctx, e)...)
+	add(servicePathCheck(e))
 	add(serviceChecks(ctx, e, isHub == nil)...)
 	add(tailscaleCheck(ctx, e))
 	return rs

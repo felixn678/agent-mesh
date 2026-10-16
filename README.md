@@ -45,7 +45,7 @@ Add another machine (yours or a friend's, same tailnet):
 
 ```sh
 agent-mesh invite <host-name>      # on the hub: prints one line, reloads the hub (SIGHUP, no restart)
-agent-mesh join <hub-url> <bundle> # on the new machine: paste that line
+agent-mesh join <hub-url>          # on the new machine; paste the printed code when asked (keeps it out of shell history)
 agent-mesh setup-claude && agent-mesh doctor
 ```
 

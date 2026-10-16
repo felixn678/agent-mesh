@@ -20,6 +20,7 @@ type fakeRunner struct {
 	mu    sync.Mutex
 	bins  map[string]bool   // tools "installed"
 	outs  map[string]string // "name arg arg" -> output; missing key = command fails
+	paths map[string]string // optional explicit LookPath results
 	calls []string
 }
 
@@ -31,6 +32,9 @@ func newFakeRunner() *fakeRunner {
 }
 
 func (f *fakeRunner) LookPath(name string) (string, error) {
+	if p, ok := f.paths[name]; ok {
+		return p, nil
+	}
 	if f.bins[name] {
 		return "/fake/bin/" + name, nil
 	}
@@ -153,11 +157,17 @@ func readFile(t *testing.T, path string) string {
 }
 
 // joinLine extracts the "agent-mesh join <url> <bundle>" arguments from invite output.
+// joinLine returns {hub-url, invite-code} from invite output.
 func joinLine(t *testing.T, out string) []string {
 	t.Helper()
+	var url string
 	for _, l := range strings.Split(out, "\n") {
-		if f := strings.Fields(l); len(f) == 4 && f[0] == "agent-mesh" && f[1] == "join" {
-			return f[2:]
+		f := strings.Fields(l)
+		if len(f) == 3 && f[0] == "agent-mesh" && f[1] == "join" {
+			url = f[2]
+		}
+		if code, ok := strings.CutPrefix(l, "paste this code when asked: "); ok && url != "" {
+			return []string{url, strings.TrimSpace(code)}
 		}
 	}
 	t.Fatalf("no join line in output:\n%s", out)
