@@ -42,13 +42,14 @@ func (t tools) owner() string {
 }
 
 // newServer registers the tools the principal may use: admin gets
-// cancel/requeue; session tokens get their own inbox.
+// cancel/requeue; session tokens get their own inbox and the worker tools.
 func newServer(st *store.Store, p api.Principal) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "agentmesh", Version: version.Version}, nil)
 	t := tools{st: st, p: p}
 	t.addTaskTools(srv)
 	t.addHostReportTools(srv)
 	t.addSessionTools(srv)
+	t.addSessionTaskTools(srv)
 	return srv
 }
 
@@ -72,6 +73,10 @@ func storeErr(err error) *mcp.CallToolResult {
 		return errResult("invalid: %v", err)
 	case errors.Is(err, store.ErrNotFound):
 		return errResult("task not found")
+	case errors.Is(err, store.ErrLeaseLost):
+		return errResult("lease lost: this session no longer holds the task; stop working on it")
+	case errors.Is(err, store.ErrCancelled):
+		return errResult("task was cancelled; stop working on it")
 	case errors.Is(err, store.ErrConflict):
 		return errResult("task state does not allow this operation")
 	case errors.Is(err, store.ErrSessionNotFound):

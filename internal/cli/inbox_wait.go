@@ -18,14 +18,18 @@ type waitOpts struct {
 	poll       time.Duration // long-poll length per request (hub caps at 50 s)
 	backoffMin time.Duration // first retry delay after a network/hub error
 	backoffMax time.Duration
+	// cooldownPoll is the shorter messages-only poll used while announced
+	// claimable work cools down, so newly added work is noticed quickly.
+	cooldownPoll time.Duration
 }
 
 var defaultWaitOpts = waitOpts{maxDur: 8 * time.Hour, poll: 50 * time.Second,
-	backoffMin: 2 * time.Second, backoffMax: 30 * time.Second}
+	backoffMin: 2 * time.Second, backoffMax: 30 * time.Second, cooldownPoll: 10 * time.Second}
 
 // runInbox prints unread messages once, or with --wait runs the background
 // waiter: Claude re-invokes the session when a run_in_background command
-// exits, so the waiter exits only when it has something to deliver.
+// exits, so the waiter exits only when it has something to deliver (messages
+// or newly claimable tasks).
 func runInbox(ctx context.Context, std cmdIO, args []string, o waitOpts) error {
 	fs := newFlags("inbox", std)
 	session := fs.String("session", "", "your agentmesh session id")
@@ -68,10 +72,13 @@ func runInbox(ctx context.Context, std cmdIO, args []string, o waitOpts) error {
 		return nil
 	}
 	defer release()
-	return waitLoop(ctx, std, c, *session, o)
+	return waitLoop(ctx, std, c, dir, *session, o)
 }
 
-func waitLoop(ctx context.Context, std cmdIO, c *client.Client, id string, o waitOpts) error {
+// waitLoop long-polls for messages or claimable tasks. Claimable work wakes
+// the session once per new batch (see claimWakeDue); while that wake is
+// cooling down the poll waits for messages only, so it never spins.
+func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, o waitOpts) error {
 	deadline := time.Now().Add(o.maxDur)
 	backoff := o.backoffMin
 	for {
@@ -84,14 +91,24 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, id string, o wai
 		if poll < time.Second {
 			poll = time.Second // the hub's wait granularity
 		}
-		msgs, err := c.InboxWait(ctx, id, true, poll)
+		resp, err := c.InboxWaitClaimable(ctx, id, true, poll)
+		claimWake := err == nil && claimWakeDue(dir, id, resp.ClaimableCount)
+		if err == nil && len(resp.Messages) == 0 && resp.ClaimableCount > 0 && !claimWake {
+			var msgs []api.Message
+			msgs, err = c.InboxWait(ctx, id, true, max(min(o.cooldownPoll, poll), time.Second)) // announced work cooling down: messages only
+			resp = api.InboxResponse{Messages: msgs}
+		}
 		if ctx.Err() != nil {
 			return nil // stopped (session exit or signal): nothing to deliver
 		}
 		var he *client.HTTPError
 		switch {
-		case err == nil && len(msgs) > 0:
-			fmt.Fprint(std.out, format.Messages(msgs, sendersOf(ctx, c)))
+		case err == nil && (len(resp.Messages) > 0 || claimWake):
+			fmt.Fprint(std.out, format.Messages(resp.Messages, sendersOf(ctx, c)))
+			if claimWake {
+				markClaimWake(dir, id, resp.ClaimableCount)
+				fmt.Fprint(std.out, claimInstructions(id, resp.ClaimableCount))
+			}
 			fmt.Fprintf(std.out, "\n[agentmesh] after handling, restart the waiter: `%s` with run_in_background.\n", waiterCommand(id))
 			return nil
 		case err == nil:

@@ -11,7 +11,7 @@ import (
 	"github.com/felixn678/agent-mesh/internal/hubtest"
 )
 
-var fastWait = waitOpts{maxDur: time.Hour, poll: 50 * time.Second, backoffMin: 20 * time.Millisecond, backoffMax: 100 * time.Millisecond}
+var fastWait = waitOpts{maxDur: time.Hour, poll: 50 * time.Second, backoffMin: 20 * time.Millisecond, backoffMax: 100 * time.Millisecond, cooldownPoll: time.Second}
 
 type waitResult struct {
 	out string
@@ -129,7 +129,10 @@ func TestWaiterExitsOnEndedSessionAndMaxDuration(t *testing.T) {
 	h := startHub(t)
 	testEnv(t, h)
 	registerFixture(t, h)
-	r := <-func() <-chan waitResult { d, _ := startWaiter(t, bg, waitOpts{maxDur: time.Second, poll: time.Second, backoffMin: time.Millisecond, backoffMax: time.Millisecond}); return d }()
+	r := <-func() <-chan waitResult {
+		d, _ := startWaiter(t, bg, waitOpts{maxDur: time.Second, poll: time.Second, backoffMin: time.Millisecond, backoffMax: time.Millisecond})
+		return d
+	}()
 	if r.err != nil || !strings.Contains(r.out, "no messages in 1s") {
 		t.Fatalf("max duration: %q %v", r.out, r.err)
 	}

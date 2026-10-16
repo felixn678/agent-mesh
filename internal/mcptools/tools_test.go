@@ -143,15 +143,19 @@ func TestSessionPrincipalCannotCancel(t *testing.T) {
 
 func TestToolsListIsSmall(t *testing.T) {
 	h := startHub(t)
-	res, err := connect(t, h, api.Principal{Admin: true}).ListTools(bg, nil)
-	if err != nil {
-		t.Fatal(err)
+	for _, p := range []api.Principal{{Admin: true}, {Host: "host-a", Session: true}} {
+		res, err := connect(t, h, p).ListTools(bg, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := json.Marshal(res)
+		// Schemas cost context in every session; keep the whole list small
+		// (session tokens see 13 tools including the worker set).
+		if len(b) > 4200 {
+			t.Fatalf("tools/list for %+v is %d bytes", p, len(b))
+		}
+		t.Logf("tools/list %+v: %d bytes, %d tools", p, len(b), len(res.Tools))
 	}
-	b, _ := json.Marshal(res)
-	if len(b) > 2560 {
-		t.Fatalf("tools/list is %d bytes", len(b))
-	}
-	t.Logf("tools/list: %d bytes, %d tools", len(b), len(res.Tools))
 }
 
 func TestHostsAndReportTools(t *testing.T) {

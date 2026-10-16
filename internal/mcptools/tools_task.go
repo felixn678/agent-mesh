@@ -14,7 +14,8 @@ import (
 // TaskAddIn is the task_add input. It carries a tool profile name, never a
 // tool list; validation is api.TaskSpec.Validate (via store.Add).
 type TaskAddIn struct {
-	Repo           string  `json:"repo" jsonschema:"repo key known to hosts"`
+	From           string  `json:"from,omitempty" jsonschema:"your session id: messaged on completion; repo defaults to its repo"`
+	Repo           string  `json:"repo,omitempty" jsonschema:"git remote or repo key"`
 	Prompt         string  `json:"prompt"`
 	BaseBranch     string  `json:"base_branch,omitempty"`
 	BudgetUSD      float64 `json:"budget_usd"`
@@ -22,6 +23,8 @@ type TaskAddIn struct {
 	ToolProfile    string  `json:"tool_profile,omitempty" jsonschema:"host profile name, default 'default'"`
 	Host           string  `json:"host,omitempty"`
 	MaxAttempts    int     `json:"max_attempts,omitempty"`
+	TargetHost     string  `json:"target_host,omitempty" jsonschema:"only sessions/daemons on this host"`
+	TargetSession  string  `json:"target_session,omitempty" jsonschema:"only this session (id, prefix or name)"`
 }
 
 // TaskListIn filters task_list.
@@ -36,7 +39,7 @@ type TaskIDIn struct {
 }
 
 func (t tools) addTaskTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{Name: "task_add", Description: "Queue a task for a host daemon."}, t.taskAdd)
+	mcp.AddTool(srv, &mcp.Tool{Name: "task_add", Description: "Queue a task for a daemon or another session."}, t.taskAdd)
 	mcp.AddTool(srv, &mcp.Tool{Name: "task_list", Description: "List tasks, newest first."}, t.taskList)
 	mcp.AddTool(srv, &mcp.Tool{Name: "task_get", Description: "Show one task."}, t.taskGet)
 	if t.p.Admin {
@@ -47,8 +50,28 @@ func (t tools) addTaskTools(srv *mcp.Server) {
 
 func (t tools) taskAdd(ctx context.Context, _ *mcp.CallToolRequest, in TaskAddIn) (*mcp.CallToolResult, any, error) {
 	spec := api.TaskSpec{Repo: in.Repo, Prompt: in.Prompt, BaseBranch: in.BaseBranch, MaxBudgetUSD: in.BudgetUSD,
-		PermissionMode: in.PermissionMode, ToolProfile: in.ToolProfile, Host: in.Host, MaxAttempts: in.MaxAttempts}
-	task, err := t.st.Add(ctx, spec, t.p.CreatedBy())
+		PermissionMode: in.PermissionMode, ToolProfile: in.ToolProfile, Host: in.Host, MaxAttempts: in.MaxAttempts,
+		TargetHost: in.TargetHost, CreatedBySession: in.From}
+	if in.TargetSession != "" {
+		target, res := t.resolveTarget(ctx, in.TargetSession)
+		if res != nil {
+			return res, nil, nil
+		}
+		spec.TargetSession = target.ID
+	}
+	if spec.Repo == "" && in.From != "" {
+		if from, err := t.st.ListSessions(ctx, false); err == nil {
+			for _, s := range from {
+				if s.ID == in.From {
+					spec.Repo = s.Repo
+				}
+			}
+		}
+	}
+	if spec.Repo == "" {
+		return errResult("repo is required (or pass from= a session registered with a git remote)"), nil, nil
+	}
+	task, err := t.st.AddTask(ctx, spec, t.p)
 	if err != nil {
 		return storeErr(err), nil, nil
 	}

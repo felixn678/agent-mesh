@@ -105,9 +105,11 @@ type hookCtx struct {
 	waiters string // pid/marker dir; "" when the state dir is unknown
 }
 
-func (h hookCtx) register() (api.Session, error) {
+// register refreshes the session; repo is sent only at session start (an
+// empty repo keeps the stored one).
+func (h hookCtx) register(repo string) (api.Session, error) {
 	return h.c.RegisterSession(h.ctx, api.RegisterSessionRequest{
-		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME")})
+		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo})
 }
 
 // unread consumes and renders the session's unread messages ("" if none).
@@ -120,13 +122,15 @@ func (h hookCtx) unread() (string, error) {
 }
 
 func (h hookCtx) sessionStart() ([]byte, error) {
-	s, err := h.register()
+	s, err := h.register(gitRemote(h.ctx, h.in.Cwd))
 	if err != nil {
 		return nil, err
 	}
 	text := fmt.Sprintf("agentmesh: your session id is %s (%s). Pass it as `from`/`session` to the agentmesh MCP tools. "+
-		"To receive messages while idle, start `%s` with run_in_background; when it exits with messages, handle them, "+
-		"then restart it. If it says already running, do not restart.", s.ID, s.Host, waiterCommand(s.ID))
+		"To receive messages and work while idle, start `%s` with run_in_background; when it exits, handle what it printed, "+
+		"then restart it. If it says already running, do not restart. When it reports claimable tasks and you are idle: "+
+		"task_claim, do the task in this repo on a new branch, push the branch, task_done with a summary, restart the waiter. "+
+		"Never claim while in the middle of other work.", s.ID, s.Host, waiterCommand(s.ID))
 	msgs, err := h.unread()
 	if err != nil {
 		return nil, err
@@ -138,7 +142,7 @@ func (h hookCtx) sessionStart() ([]byte, error) {
 }
 
 func (h hookCtx) prompt() ([]byte, error) {
-	if _, err := h.register(); err != nil {
+	if _, err := h.register(""); err != nil {
 		return nil, err
 	}
 	msgs, err := h.unread()
@@ -151,12 +155,15 @@ func (h hookCtx) prompt() ([]byte, error) {
 	return contextOutput("UserPromptSubmit", msgs)
 }
 
-// stop blocks the stop once to deliver unread messages, or once per waiter
+// stop extends leases of tasks this session holds, then blocks the stop once to deliver unread messages, or once per waiter
 // death to ask for a restart. stop_hook_active (a stop already continued by
 // a hook) always allows, so a session can never loop.
 func (h hookCtx) stop() ([]byte, error) {
-	if _, err := h.register(); err != nil {
+	if _, err := h.register(""); err != nil {
 		return nil, err
+	}
+	if err := heartbeatHeld(h.ctx, h.c, h.in.SessionID); err != nil {
+		logHook("stop heartbeat", err) // keep delivering messages
 	}
 	if h.in.StopHookActive {
 		return nil, nil
