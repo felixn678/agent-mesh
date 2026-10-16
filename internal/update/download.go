@@ -55,7 +55,7 @@ func (o *Options) fetch(ctx context.Context, base, name string, limit int64) ([]
 	if u.Scheme == "file" {
 		return readLimited(raw, limit, func() (io.ReadCloser, error) { return os.Open(u.Path) })
 	}
-	if u.Scheme != "https" && (o.BaseURL == "" || u.Scheme != "http") {
+	if !o.schemeAllowed(u.Scheme) {
 		return nil, fmt.Errorf("download %s: only https URLs are allowed", raw)
 	}
 	client := *o.HTTP
@@ -79,10 +79,19 @@ func (o *Options) fetch(ctx context.Context, base, name string, limit int64) ([]
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
+			if resp.StatusCode == http.StatusNotFound {
+				return nil, fmt.Errorf("HTTP %s: %w", resp.Status, errNotFound)
+			}
 			return nil, fmt.Errorf("HTTP %s", resp.Status)
 		}
 		return resp.Body, nil
 	})
+}
+
+// schemeAllowed: GitHub is HTTPS-only; a download-base override may also be
+// http:// or file://.
+func (o *Options) schemeAllowed(scheme string) bool {
+	return scheme == "https" || o.BaseURL != "" && (scheme == "http" || scheme == "file")
 }
 
 func readLimited(what string, limit int64, open func() (io.ReadCloser, error)) ([]byte, error) {
@@ -118,6 +127,9 @@ func checksumFor(sums []byte, asset string) (string, error) {
 func (o *Options) download(ctx context.Context, tag, dir string) (*release, error) {
 	base, asset := o.releaseBase(tag), o.asset()
 	sums, err := o.fetch(ctx, base, "SHA256SUMS", maxSums)
+	if tag == "" && errors.Is(err, errNotFound) {
+		return nil, noRelease(base)
+	}
 	if err != nil {
 		return nil, err
 	}

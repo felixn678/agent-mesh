@@ -82,7 +82,7 @@ func TestUpdateRefusesBadDownloads(t *testing.T) {
 		{"no checksum entry", "SHA256SUMS has no entry", func(dir string) {
 			os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte("00  other.tar.gz\n"), 0o644)
 		}},
-		{"missing checksums", "SHA256SUMS", func(dir string) { os.Remove(filepath.Join(dir, "SHA256SUMS")) }},
+		{"missing checksums", "no release published yet", func(dir string) { os.Remove(filepath.Join(dir, "SHA256SUMS")) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := releaseDir(t, "v1.2.0")

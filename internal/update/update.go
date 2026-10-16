@@ -75,6 +75,16 @@ func Run(ctx context.Context, o *Options, args []string) error {
 		return fmt.Errorf("%s is managed by the Go tool; update it with:\n  %s", o.Exe, goInstallHint(tag))
 	}
 
+	if *check && tag == "" {
+		latest, err := o.latestTag(ctx)
+		if err != nil {
+			return err
+		}
+		if latest != "" {
+			return o.checkResult(latest)
+		}
+	}
+
 	// Stage next to the binary (a directory that allows exec, unlike some
 	// /tmp mounts); --check on a read-only install falls back to the temp dir.
 	dir, err := os.MkdirTemp(filepath.Dir(o.Exe), ".agent-mesh-update-")
@@ -93,22 +103,12 @@ func Run(ctx context.Context, o *Options, args []string) error {
 		return fmt.Errorf("release %s contains agent-mesh %s; not installing", tag, rel.Version)
 	}
 
+	if *check {
+		return o.checkResult(rel.Version)
+	}
 	cmp := 1 // dev builds: any explicit release is a change
 	if !dev {
 		cmp = compareTags(rel.Version, o.Current)
-	}
-	if *check {
-		o.printf("current: %s\nlatest:  %s\n", o.Current, rel.Version)
-		switch {
-		case cmp > 0:
-			o.printf("update available: run agent-mesh update\n")
-			return ExitError{ExitUpdateAvailable}
-		case cmp < 0:
-			o.printf("this build is newer than the release\n")
-		default:
-			o.printf("already up to date\n")
-		}
-		return nil
 	}
 	switch {
 	case cmp == 0:
@@ -130,6 +130,22 @@ func Run(ctx context.Context, o *Options, args []string) error {
 	restartErr := o.restart(ctx, *noRestart)
 	o.printf("update the hub machine first, then the others (agent-mesh update on each)\n")
 	return restartErr
+}
+
+// checkResult prints current vs latest for --check (never a dev build) and
+// exits 10 when latest is newer.
+func (o *Options) checkResult(latest string) error {
+	o.printf("current: %s\nlatest:  %s\n", o.Current, latest)
+	switch cmp := compareTags(latest, o.Current); {
+	case cmp > 0:
+		o.printf("update available: run agent-mesh update\n")
+		return ExitError{ExitUpdateAvailable}
+	case cmp < 0:
+		o.printf("this build is newer than the release\n")
+	default:
+		o.printf("already up to date\n")
+	}
+	return nil
 }
 
 // restart restarts the installed services that run the updated binary, hub
