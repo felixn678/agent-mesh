@@ -9,6 +9,7 @@ import (
 
 	"github.com/felixn678/agent-mesh/internal/mcptools/format"
 	"github.com/felixn678/agent-mesh/internal/report"
+	"github.com/felixn678/agent-mesh/internal/version"
 )
 
 // HostsIn controls the hosts tool.
@@ -37,7 +38,7 @@ func (t tools) hosts(ctx context.Context, _ *mcp.CallToolRequest, in HostsIn) (*
 	now := t.st.Now()
 	lines := make([]string, len(list))
 	for i, h := range list {
-		lines[i] = format.HostLine(h, now, in.Verbose)
+		lines[i] = format.HostLine(h, now, in.Verbose, version.Version)
 	}
 	return textResult(strings.Join(lines, "\n")), nil, nil
 }

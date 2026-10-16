@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/felixn678/agent-mesh/internal/client"
 	"github.com/felixn678/agent-mesh/internal/config"
+	"github.com/felixn678/agent-mesh/internal/version"
 )
 
 // hubURLFor resolves the hub URL exactly like the other CLI commands.
@@ -40,6 +42,28 @@ func authResult(ctx context.Context, tokenFile, url, tok string) Result {
 		return Result{name, Fail, err.Error(), "agent-mesh invite <host> on the hub, then agent-mesh join again; on the hub, SIGHUP reloads hub.toml"}
 	}
 	return Result{name, Pass, "accepted by hub as " + strings.TrimSuffix(tokenFile, ".token") + " token", ""}
+}
+
+// versionCheck compares this binary with the hub's version. Hubs too old to
+// report one, and dev or pseudo-version builds, pass as "unknown"; ok is false
+// when the hub could not be asked (auth and reachability report that).
+func versionCheck(ctx context.Context, url, tok string) (Result, bool) {
+	name := "version"
+	who, err := client.New(url, tok).WhoAmI(ctx)
+	if err != nil {
+		return Result{}, false
+	}
+	if skew := version.LocalSkew(version.Version, who.HubVersion); skew != "" {
+		return Result{name, Warn, skew, "agent-mesh update (on the machine with the older version)"}, true
+	}
+	if _, known := version.Compare(version.Version, who.HubVersion); !known {
+		hub := who.HubVersion
+		if hub == "" {
+			hub = "unreported"
+		}
+		return Result{name, Pass, version.Version + " (hub " + hub + "; not compared)", ""}, true
+	}
+	return Result{name, Pass, version.Version + ", same as the hub", ""}, true
 }
 
 // toolChecks verifies the CLIs workers and sessions need.

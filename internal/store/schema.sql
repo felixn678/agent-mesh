@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   name         TEXT NOT NULL DEFAULT '',
   repo         TEXT NOT NULL DEFAULT '',          -- v2: normalized project key
   worker       INTEGER NOT NULL DEFAULT 1,        -- v6: 0 = never claims tasks
+  agent_version TEXT NOT NULL DEFAULT '',         -- v7: version of the session's hooks
   started_at   INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL,
   ended_at     INTEGER

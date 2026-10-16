@@ -103,6 +103,14 @@ func runChecks(ctx context.Context, e *Env) []Result {
 			add(authResult(ctx, n, url, tok))
 		}
 	}
+	for _, n := range names {
+		if tok, ok := tokens[n]; ok && reach.Status == Pass {
+			if r, ok := versionCheck(ctx, url, tok); ok {
+				add(r)
+			}
+			break
+		}
+	}
 	add(toolChecks(ctx, e)...)
 	add(servicePathCheck(e))
 	add(serviceChecks(ctx, e, isHub == nil, reach.Status == Pass)...)

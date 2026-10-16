@@ -11,16 +11,19 @@ import (
 // Session is a registered Claude Code session. Alive is computed by the hub:
 // not ended and seen within SessionAliveWindow.
 type Session struct {
-	ID         string `json:"id"`
-	Host       string `json:"host"`
-	Cwd        string `json:"cwd,omitempty"`
-	Name       string `json:"name,omitempty"`
-	Repo       string `json:"repo,omitempty"` // normalized project key
-	Worker     bool   `json:"worker"`         // may claim tasks
-	StartedAt  int64  `json:"started_at"`
-	LastSeenAt int64  `json:"last_seen_at"`
-	EndedAt    int64  `json:"ended_at,omitempty"`
-	Alive      bool   `json:"alive"`
+	ID     string `json:"id"`
+	Host   string `json:"host"`
+	Cwd    string `json:"cwd,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Repo   string `json:"repo,omitempty"` // normalized project key
+	Worker bool   `json:"worker"`         // may claim tasks
+	// AgentVersion is the agent-mesh version of the session's hooks (empty
+	// until a hook of a version that reports it registers the session).
+	AgentVersion string `json:"agent_version,omitempty"`
+	StartedAt    int64  `json:"started_at"`
+	LastSeenAt   int64  `json:"last_seen_at"`
+	EndedAt      int64  `json:"ended_at,omitempty"`
+	Alive        bool   `json:"alive"`
 }
 
 // RegisterSessionRequest registers or refreshes (heartbeat) a session.
@@ -32,6 +35,8 @@ type RegisterSessionRequest struct {
 	// Worker opts the session in or out of claiming tasks (nil keeps the
 	// stored value; new sessions default to true).
 	Worker *bool `json:"worker,omitempty"`
+	// AgentVersion is the hook binary's version; empty keeps the stored one.
+	AgentVersion string `json:"agent_version,omitempty"`
 }
 
 // EndSessionRequest marks a session ended.
@@ -128,6 +133,9 @@ func (r RegisterSessionRequest) Validate() error {
 	}
 	if len(r.Name) > 100 || !utf8.ValidString(r.Name) {
 		return invalid("name must be valid UTF-8 of at most 100 bytes")
+	}
+	if len(r.AgentVersion) > 100 || !utf8.ValidString(r.AgentVersion) {
+		return invalid("agent_version must be valid UTF-8 of at most 100 bytes")
 	}
 	if r.Repo != "" {
 		if _, err := NormalizeRepo(r.Repo); err != nil {

@@ -18,7 +18,7 @@ var schemaSQL string
 
 // schemaVersion is stored in PRAGMA user_version. Future changes must be
 // forward-only migrations keyed on it.
-const schemaVersion = 6
+const schemaVersion = 7
 
 // upgradeV1 adds the v2 columns to a v1 database. SQLite has no ADD COLUMN IF
 // NOT EXISTS, so a concurrent first open may find a column already added.
@@ -43,8 +43,11 @@ var upgradeV4 = []string{"ALTER TABLE tasks ADD COLUMN request_id TEXT"}
 // upgradeV5 adds the v6 per-session worker opt-out.
 var upgradeV5 = []string{"ALTER TABLE sessions ADD COLUMN worker INTEGER NOT NULL DEFAULT 1"}
 
+// upgradeV6 adds the v7 session agent version.
+var upgradeV6 = []string{"ALTER TABLE sessions ADD COLUMN agent_version TEXT NOT NULL DEFAULT ''"}
+
 // upgrades maps a stored version to the statements that lift it by one.
-var upgrades = map[int][]string{1: upgradeV1, 2: upgradeV2, 3: upgradeV3, 4: upgradeV4, 5: upgradeV5}
+var upgrades = map[int][]string{1: upgradeV1, 2: upgradeV2, 3: upgradeV3, 4: upgradeV4, 5: upgradeV5, 6: upgradeV6}
 
 // Open opens (creating if needed, mode 0600) the hub database and migrates it.
 // synchronous=FULL: a fence that was returned to a worker must survive power
