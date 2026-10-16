@@ -7,7 +7,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // readInviteCode reads one line (the invite code) from stdin, so the secret
@@ -17,6 +20,16 @@ func (e *Env) readInviteCode() (string, error) {
 		return "", errors.New("no stdin to read the invite code from")
 	}
 	e.printf("Paste the invite code and press Enter: ")
+	// On a real terminal, read without echo so the secret is not left on screen
+	// or in terminal scrollback.
+	if f, ok := e.In.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		b, err := term.ReadPassword(int(f.Fd()))
+		e.printf("\n")
+		if err != nil || strings.TrimSpace(string(b)) == "" {
+			return "", errors.New("no invite code received on stdin")
+		}
+		return strings.TrimSpace(string(b)), nil
+	}
 	line, err := bufio.NewReaderSize(io.LimitReader(e.In, 64<<10), 64<<10).ReadString('\n')
 	if err != nil && (err != io.EOF || strings.TrimSpace(line) == "") {
 		return "", errors.New("no invite code received on stdin")
