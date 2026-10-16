@@ -88,3 +88,30 @@ func TestClaimRetryWithRequestIDOverREST(t *testing.T) {
 		t.Fatalf("empty-body claim: %v", err)
 	}
 }
+
+func TestHeartbeatOnReapedTaskSaysLeaseReaped(t *testing.T) {
+	h := hubtest.Start(t)
+	if _, err := h.Admin().AddTask(bg, api.TaskSpec{Repo: "r", Prompt: "p", MaxBudgetUSD: 2, MaxAttempts: 1}); err != nil {
+		t.Fatal(err)
+	}
+	host := h.Host("host-a")
+	c, err := host.Claim(bg, caps())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Clock.Advance(5*time.Minute + 31*time.Minute) // past TTL and the revive window
+	if _, err := h.Store.Reap(bg); err != nil {
+		t.Fatal(err)
+	}
+	err = host.Heartbeat(bg, c.ID, api.HeartbeatRequest{Fence: c.Fence})
+	if !client.IsLeaseReaped(err) || !client.IsLeaseLost(err) {
+		t.Fatalf("heartbeat on reaped task: %v", err)
+	}
+	if _, err := host.Complete(bg, c.ID, api.CompleteRequest{Fence: c.Fence}); err != nil {
+		t.Fatalf("late complete: %v", err)
+	}
+	err = host.Heartbeat(bg, c.ID, api.HeartbeatRequest{Fence: c.Fence})
+	if client.IsLeaseReaped(err) || !client.IsLeaseLost(err) {
+		t.Fatalf("heartbeat after late complete: %v", err)
+	}
+}

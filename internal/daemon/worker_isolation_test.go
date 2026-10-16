@@ -26,3 +26,27 @@ func TestWorkerCannotRedirectDaemonGitDir(t *testing.T) {
 		t.Fatal("PR opened from a tampered worktree")
 	}
 }
+
+// Open PRs from forks that reuse agent-mesh branch names are neither adopted
+// as the task's PR nor closed as superseded.
+func TestForkPRsWithTaskBranchNamesAreIgnored(t *testing.T) {
+	e := newEnv(t)
+	withGHState(e.fakeDir, func(s *ghState) {
+		s.Next = 2
+		s.PRs = []fakePR{
+			{Number: 1, Head: "agentmesh/task-1-f1", State: "open", URL: "https://github.com/example/demo/pull/1", Fork: true},
+			{Number: 2, Head: "agentmesh/task-1-f0", State: "open", URL: "https://github.com/example/demo/pull/2", Fork: true},
+		}
+	})
+	task := e.addTask("commit")
+	runOne(t, e.daemon(nil))
+	got := e.task(task.ID)
+	if got.State != api.StateDone || got.PRURL == "" || got.PRURL == "https://github.com/example/demo/pull/1" {
+		t.Fatalf("fork PR adopted or no PR opened: %+v", got)
+	}
+	for _, pr := range e.ghState().PRs {
+		if pr.Fork && pr.State != "open" {
+			t.Fatalf("fork PR %d was closed", pr.Number)
+		}
+	}
+}

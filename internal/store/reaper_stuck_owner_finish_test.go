@@ -76,9 +76,9 @@ func TestOwnerCompleteAfterReapWinsOthersDoNot(t *testing.T) {
 	wantErr(t, err, store.ErrLeaseLost)
 	_, err = e.st.Release(bg, "box", c.ID, api.ReleaseRequest{Fence: c.Fence}) // no revival through release
 	wantErr(t, err, store.ErrLeaseLost)
-	if err := e.st.Heartbeat(bg, "box", c.ID, c.Fence); err == nil {
-		t.Fatal("heartbeat revived a reaped task")
-	}
+	// The owner learns the task was reaped (not reclaimed): it may finish.
+	wantErr(t, e.st.Heartbeat(bg, "box", c.ID, c.Fence), store.ErrLeaseReaped)
+	wantErr(t, e.st.Heartbeat(bg, "other", c.ID, c.Fence), store.ErrLeaseLost)
 
 	done := api.CompleteRequest{Fence: c.Fence, Branch: "agentmesh/1-x", PRURL: "https://github.com/o/r/pull/1", CostUSD: 0.4}
 	if again, err := e.st.Complete(bg, "box", c.ID, done); err != nil || again {
@@ -91,6 +91,8 @@ func TestOwnerCompleteAfterReapWinsOthersDoNot(t *testing.T) {
 	if again, err := e.st.Complete(bg, "box", c.ID, done); err != nil || !again {
 		t.Fatalf("replay: again=%v err=%v", again, err)
 	}
+	// Finished: no longer "reaped", just gone.
+	wantErr(t, e.st.Heartbeat(bg, "box", c.ID, c.Fence), store.ErrLeaseLost)
 }
 
 func TestCancelOrRequeueEndsLateFinish(t *testing.T) {

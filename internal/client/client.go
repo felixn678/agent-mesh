@@ -32,10 +32,19 @@ type LeaseError struct{ Code, Message string }
 
 func (e *LeaseError) Error() string { return e.Code + ": " + e.Message }
 
-// IsLeaseLost reports whether err is a lease_lost or cancelled LeaseError.
+// IsLeaseLost reports whether err is a lease_lost, lease_reaped or
+// cancelled LeaseError: in every case the heartbeat was refused.
 func IsLeaseLost(err error) bool {
 	var le *LeaseError
 	return errors.As(err, &le)
+}
+
+// IsLeaseReaped reports a lease_reaped LeaseError: the reaper marked the task
+// stuck at its attempt cap, but this holder may still finish it and report
+// Complete or Fail (the hub accepts that late outcome).
+func IsLeaseReaped(err error) bool {
+	var le *LeaseError
+	return errors.As(err, &le) && le.Code == api.CodeLeaseReaped
 }
 
 // HTTPError is any other non-2xx hub response.
@@ -112,7 +121,7 @@ func decodeError(status int, data []byte) error {
 	if json.Unmarshal(data, &eb) != nil || eb.Code == "" {
 		return &HTTPError{Status: status, Code: "unknown", Message: strings.TrimSpace(string(data))}
 	}
-	if status == http.StatusConflict && (eb.Code == api.CodeLeaseLost || eb.Code == api.CodeCancelled) {
+	if status == http.StatusConflict && (eb.Code == api.CodeLeaseLost || eb.Code == api.CodeLeaseReaped || eb.Code == api.CodeCancelled) {
 		return &LeaseError{Code: eb.Code, Message: eb.Error}
 	}
 	return &HTTPError{Status: status, Code: eb.Code, Message: eb.Error}

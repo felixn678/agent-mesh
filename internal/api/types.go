@@ -13,11 +13,12 @@ const (
 
 // Error codes carried in ErrorBody.Code.
 const (
-	CodeLeaseLost    = "lease_lost" // fence or host moved on; worker must stop
-	CodeCancelled    = "cancelled"  // task cancelled; worker must stop
-	CodeConflict     = "conflict"   // state does not allow the operation
-	CodeEnded        = "ended"      // target session has ended
-	CodeInboxFull    = "inbox_full" // recipient has too many unread messages
+	CodeLeaseLost    = "lease_lost"   // fence or host moved on; worker must stop
+	CodeLeaseReaped  = "lease_reaped" // reaper stuck it at the cap; holder may still Complete/Fail late
+	CodeCancelled    = "cancelled"    // task cancelled; worker must stop
+	CodeConflict     = "conflict"     // state does not allow the operation
+	CodeEnded        = "ended"        // target session has ended
+	CodeInboxFull    = "inbox_full"   // recipient has too many unread messages
 	CodeTooManyWaits = "too_many_waits"
 	CodeInvalid      = "invalid"
 	CodeNotFound     = "not_found"

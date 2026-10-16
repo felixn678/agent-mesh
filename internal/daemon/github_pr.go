@@ -12,9 +12,10 @@ import (
 )
 
 type ghPR struct {
-	Number      int    `json:"number"`
-	HeadRefName string `json:"headRefName"`
-	URL         string `json:"url"`
+	Number            int    `json:"number"`
+	HeadRefName       string `json:"headRefName"`
+	URL               string `json:"url"`
+	IsCrossRepository bool   `json:"isCrossRepository"`
 }
 
 // gh runs the gh CLI in the task worktree (repo context from its origin
@@ -30,14 +31,24 @@ func (d *Daemon) gh(ctx context.Context, j *journal, stdin string, args ...strin
 	return runCmd(ctx, d.cfg.GitCallTimeout, j.Worktree, env, strings.NewReader(stdin), d.cfg.GHBin, args...)
 }
 
+// openPRs lists open PRs whose head branch lives in this repository.
 func (d *Daemon) openPRs(ctx context.Context, j *journal) ([]ghPR, error) {
-	out, err := d.gh(ctx, j, "", "pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "200")
+	out, err := d.gh(ctx, j, "", "pr", "list", "--state", "open", "--json", "number,headRefName,url,isCrossRepository",
+		"--limit", "200")
 	if err != nil {
 		return nil, err
 	}
-	var prs []ghPR
-	if err := json.Unmarshal([]byte(out), &prs); err != nil {
+	var all []ghPR
+	if err := json.Unmarshal([]byte(out), &all); err != nil {
 		return nil, fmt.Errorf("gh pr list: %w", err)
+	}
+	// Only PRs whose head branch is in this repository are ours: a fork may
+	// use the same branch name, and must be neither adopted nor closed.
+	var prs []ghPR
+	for _, pr := range all {
+		if !pr.IsCrossRepository {
+			prs = append(prs, pr)
+		}
 	}
 	return prs, nil
 }

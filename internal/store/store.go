@@ -13,8 +13,11 @@ import (
 var (
 	ErrNotFound  = errors.New("task not found")
 	ErrLeaseLost = errors.New("lease lost: fence or host no longer holds this task")
-	ErrCancelled = errors.New("task was cancelled")
-	ErrConflict  = errors.New("operation not allowed in the task's current state")
+	// ErrLeaseReaped: the reaper marked the holder's task stuck at the attempt
+	// cap; the holder may still Complete or Fail it, but not heartbeat.
+	ErrLeaseReaped = errors.New("lease reaped: task stuck at attempt cap; finish and report the outcome")
+	ErrCancelled   = errors.New("task was cancelled")
+	ErrConflict    = errors.New("operation not allowed in the task's current state")
 )
 
 // LeaseConfig tunes lease timing.

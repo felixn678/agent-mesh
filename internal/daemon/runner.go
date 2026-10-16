@@ -63,7 +63,7 @@ func (d *Daemon) runClaude(ctx context.Context, t api.ClaimedTask, n taskNames) 
 		return Result{}, outNoResult, "", err
 	}
 	cmd := exec.Command(d.cfg.ClaudeBin, claudeArgs(d.cfg, t)...)
-	cmd.Dir, cmd.Env = n.worktree, d.claudeEnv
+	cmd.Dir, cmd.Env = n.worktree, d.workerEnv(t.ToolProfile)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -112,6 +112,15 @@ func (d *Daemon) runClaude(ctx context.Context, t api.ClaimedTask, n taskNames) 
 	return res, outOK, errTail, nil
 }
 
+// workerEnv is the claude env for a task, plus the ssh-agent vars when its
+// profile opts in.
+func (d *Daemon) workerEnv(profile string) []string {
+	if !d.cfg.ToolProfiles[profile].AllowSSHAgent || len(d.sshEnv) == 0 {
+		return d.claudeEnv
+	}
+	return append(append([]string{}, d.claudeEnv...), d.sshEnv...)
+}
+
 // killGroup sends TERM to the process group, then KILL after killGrace.
 func (d *Daemon) killGroup(pgid int, done <-chan error) {
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
@@ -132,6 +141,7 @@ func (d *Daemon) heartbeatLoop(ctx context.Context, id, fence int64, lost chan<-
 	tk := time.NewTicker(check)
 	defer tk.Stop()
 	last := time.Now().Round(0)
+	reaped := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -143,6 +153,16 @@ func (d *Daemon) heartbeatLoop(ctx context.Context, id, fence int64, lost chan<-
 		}
 		last = time.Now().Round(0)
 		err := d.hub.Heartbeat(ctx, id, api.HeartbeatRequest{Fence: fence})
+		if client.IsLeaseReaped(err) {
+			// Reaped at the attempt cap, not reclaimed: nobody else can hold
+			// this fence, so let claude finish and report the outcome late.
+			// Keep checking: a cancel or requeue+reclaim still stops the run.
+			if !reaped {
+				d.log.Warn("lease reaped at attempt cap; finishing anyway", "task", id, "fence", fence)
+				reaped = true
+			}
+			continue
+		}
 		if client.IsLeaseLost(err) {
 			d.log.Warn("lease lost; stopping task", "task", id, "fence", fence, "err", err)
 			close(lost)
@@ -155,11 +175,16 @@ func (d *Daemon) heartbeatLoop(ctx context.Context, id, fence int64, lost chan<-
 }
 
 // fenceCheck is a one-off heartbeat before a publish side effect. It returns
-// lost=true on 409; network errors are retried until ctx ends.
+// lost=true on 409, except lease_reaped: the fence is still ours alone and the
+// hub accepts a late Complete/Fail, so publishing goes on. Network errors are
+// retried until ctx ends.
 func (d *Daemon) fenceCheck(ctx context.Context, id, fence int64) (lost bool, err error) {
 	err = d.report(ctx, "heartbeat", func(ctx context.Context) error {
 		return d.hub.Heartbeat(ctx, id, api.HeartbeatRequest{Fence: fence})
 	})
+	if client.IsLeaseReaped(err) {
+		return false, nil
+	}
 	if client.IsLeaseLost(err) {
 		return true, nil
 	}
