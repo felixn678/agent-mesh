@@ -1,0 +1,22 @@
+# ~/.config/agent-mesh/hub.toml  (mode 0600). Placeholders only; never commit real values.
+listen = "127.0.0.1:8787"   # v1 loopback. Multi-host: "<tailnet-ip>:8787" (Tailscale only)
+db_path = "~/.local/share/agent-mesh/hub.db"
+
+# Output of: agent-mesh token new --admin --out ~/.config/agent-mesh/admin.token
+admin_token_hash = "sha256:<hex>"
+
+lease_ttl = "5m"
+reap_interval = "60s"
+stale_requeue = "1h"
+revive_window = "30m"
+session_alive_window = "12h"
+retention = "168h"
+
+# Daemons: lease + load + reads. Output of: agent-mesh token new --host <host-name> --out host.token
+[host_tokens]
+"<host-name>" = "sha256:<hex>"
+
+# Interactive Claude sessions: messaging, task add, reads (no lease ops, no cancel/requeue).
+# Output of: agent-mesh token new --session <host-name> --out session.token
+[session_tokens]
+"<host-name>" = "sha256:<hex>"

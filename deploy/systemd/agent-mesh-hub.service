@@ -1,0 +1,12 @@
+[Unit]
+Description=agent-mesh hub
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=%h/.local/bin/agent-mesh hub
+Restart=on-failure
+RestartSec=10
+UMask=0077
+
+[Install]
+WantedBy=default.target
