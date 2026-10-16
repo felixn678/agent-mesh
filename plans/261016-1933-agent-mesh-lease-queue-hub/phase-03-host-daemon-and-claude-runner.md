@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Host daemon and claude runner"
-status: pending
+status: completed
 priority: P1
 effort: "13h (3a Ubuntu 10h + 3b Mac optional 3h)"
 dependencies: [1]

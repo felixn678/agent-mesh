@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Install and ops"
-status: pending
+status: completed
 priority: P2
 effort: "3h"
 dependencies: [2, 3, 4]

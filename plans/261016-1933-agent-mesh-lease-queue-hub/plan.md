@@ -1,7 +1,7 @@
 ---
 title: "AgentMesh: lease queue hub + pull daemons"
 description: "Go hub (SQLite fenced lease queue, REST + project-scoped MCP) and per-host pull daemons running one isolated claude -p per task, with journaled PR publish and morning report."
-status: pending
+status: in-progress
 priority: P2
 effort: 32h
 branch: "main"
@@ -69,11 +69,11 @@ Stop duplicate/lost overnight work across hosts. Hub owns all state (SQLite). Ea
 ## Phases
 | # | Phase | Deps | Effort | Status |
 |---|---|---|---|---|
-| 1 | [Hub core and lease queue](./phase-01-hub-core-and-lease-queue.md) (+ sessions/messages) | — | 8h | Pending |
-| 2 | [MCP and CLI task tools](./phase-02-mcp-and-cli-task-tools.md) (+ session tools, hook CLI, setup-claude) | 1 | 6h | Pending |
-| 3 | [Host daemon and claude runner](./phase-03-host-daemon-and-claude-runner.md) (3a Ubuntu 10h; 3b Mac optional 3h) | 1 (3b: 5 Tailscale steps) | 13h | Pending |
-| 4 | [Morning report](./phase-04-morning-report.md) | 1 | 2h | Pending |
-| 5 | [Install and ops](./phase-05-install-and-ops.md) | 2, 3a, 4 | 3h | Pending |
+| 1 | [Hub core and lease queue](./phase-01-hub-core-and-lease-queue.md) (+ sessions/messages) | — | 8h | Completed |
+| 2 | [MCP and CLI task tools](./phase-02-mcp-and-cli-task-tools.md) (+ session tools, hook CLI, setup-claude) | 1 | 6h | Completed |
+| 3 | [Host daemon and claude runner](./phase-03-host-daemon-and-claude-runner.md) (3a Ubuntu 10h; 3b Mac optional 3h) | 1 (3b: 5 Tailscale steps) | 13h | Completed (3a); 3b Mac pending user test |
+| 4 | [Morning report](./phase-04-morning-report.md) | 1 | 2h | Completed |
+| 5 | [Install and ops](./phase-05-install-and-ops.md) | 2, 3a, 4 | 3h | Completed |
 
 ### Parallel execution
 After phase 1 merges, phases 2/3/4 run in **3 parallel Claude sessions** (separate worktrees). Phase 1 freezes contracts (stubs, `store.ListForReport`, `hub.NewServer`, `store.New` with clock, `internal/version`, `internal/hubtest`); no shared file edited.
