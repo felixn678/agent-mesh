@@ -1,0 +1,17 @@
+[Unit]
+Description=agent-mesh host daemon (claude -p workers)
+After=agent-mesh-hub.service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=%h/.local/bin/agent-mesh daemon
+Environment=PATH=%h/.local/bin:%h/go/bin:/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=10
+UMask=0077
+# SIGTERM reaches the daemon first so it releases its leases before workers are killed.
+TimeoutStopSec=60
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

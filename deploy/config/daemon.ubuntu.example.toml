@@ -1,0 +1,36 @@
+# ~/.config/agent-mesh/daemon.toml  (mode 0600). Placeholders only.
+hub_url = "http://127.0.0.1:8787"
+host_token_file = "~/.config/agent-mesh/host.token"
+state_dir = "~/.local/share/agent-mesh"   # repos/ worktrees/ logs/ spool/ run/
+
+poll_interval = "30s"
+heartbeat_interval = "60s"
+task_timeout = "3h"
+git_call_timeout = "120s"                 # keep below hub lease_ttl / 2
+
+# max_slots = 2                           # optional; default is derived from cores/RAM
+max_cpu_pct = 80
+min_mem_avail_pct = 25
+max_agent_worktrees = 6
+stuck_retention = "72h"
+log_retention = "168h"
+
+allowed_permission_modes = ["acceptEdits", "dontAsk"]   # bypassPermissions/auto refuse to start
+max_budget_usd_cap = 5.0
+worker_setting_sources = "project"
+claude_bin = "claude"
+claude_env_file = ""                      # optional 0600 file: CLAUDE_CODE_OAUTH_TOKEN=...
+gh_env_file = "~/.config/agent-mesh/gh.env"   # 0600: GH_TOKEN=<fine-grained PAT>
+gitleaks_bin = "gitleaks"
+
+[repos]                                   # allowlist: task repo name -> remote URL
+"<repo>" = "https://github.com/<user>/<repo>.git"
+
+[tool_profiles.default]
+allow = ["Read", "Edit", "Write", "Glob", "Grep",
+         "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)",
+         "Bash(git add *)", "Bash(git commit *)",
+         "Bash(go test *)", "Bash(go build *)", "Bash(go vet *)"]
+
+[tool_profiles.edit-only]
+allow = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git add *)", "Bash(git commit *)"]
