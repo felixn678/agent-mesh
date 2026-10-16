@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/felixn678/agent-mesh/internal/api"
@@ -26,10 +28,14 @@ type waitOpts struct {
 	// cooldownPoll is the pause between polls while only already-announced
 	// messages or cooling-down work are pending (the hub answers at once).
 	cooldownPoll time.Duration
+	// parentGone reports that the Claude session that started the waiter is
+	// gone (nil: watch the real parent chain every parentCheck).
+	parentGone  func() bool
+	parentCheck time.Duration
 }
 
 var defaultWaitOpts = waitOpts{maxDur: 8 * time.Hour, poll: 50 * time.Second,
-	backoffMin: 2 * time.Second, backoffMax: 30 * time.Second, cooldownPoll: 10 * time.Second}
+	backoffMin: 2 * time.Second, backoffMax: 30 * time.Second, cooldownPoll: 10 * time.Second, parentCheck: 2 * time.Second}
 
 // runInbox prints unread messages once, or with --wait runs the background
 // waiter: Claude re-invokes the session when a run_in_background command
@@ -77,6 +83,15 @@ func runInbox(ctx context.Context, std cmdIO, args []string, o waitOpts) error {
 		return nil
 	}
 	defer release()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	ctx, stopHUP := signal.NotifyContext(ctx, syscall.SIGHUP) // terminal closed
+	defer stopHUP()
+	gone := o.parentGone
+	if gone == nil {
+		gone = parentWatcher()
+	}
+	go watchParent(ctx, cancel, gone, o.parentCheck)
 	return waitLoop(ctx, std, c, dir, *session, o)
 }
 
@@ -98,7 +113,7 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 		}
 		resp, err := c.InboxWaitClaimable(ctx, id, false, poll)
 		if ctx.Err() != nil {
-			return stopped(std)
+			return stopped(ctx, std)
 		}
 		fresh := err == nil && newSinceAnnounced(dir, id, resp.Messages)
 		claimWake := err == nil && claimWakeDue(dir, id, resp.ClaimableCount)
@@ -124,7 +139,7 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 			// Only already-announced messages or cooling-down work: the hub
 			// answers at once, so pause instead of spinning.
 			if sleepCtx(ctx, o.cooldownPoll) != nil {
-				return stopped(std)
+				return stopped(ctx, std)
 			}
 			continue
 		case err == nil:
@@ -140,7 +155,7 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 		// Hub down or overloaded: retry quietly; exiting would wake the
 		// session for nothing.
 		if sleepCtx(ctx, backoff) != nil {
-			return stopped(std)
+			return stopped(ctx, std)
 		}
 		backoff = min(backoff*2, o.backoffMax)
 	}
@@ -148,7 +163,10 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 
 // stopped explains a signal exit: a silent exit 0 made a live session guess
 // at a bug and restart the waiter outside run_in_background.
-func stopped(std cmdIO) error {
+func stopped(ctx context.Context, std cmdIO) error {
+	if errors.Is(context.Cause(ctx), errParentGone) {
+		return nil // nobody is left to read output
+	}
 	fmt.Fprintln(std.out, "[agentmesh] waiter stopped by a signal (no message); restart it with run_in_background if you still want idle wake-ups.")
 	return nil
 }

@@ -124,7 +124,7 @@ func TestShellWords(t *testing.T) {
 	for in, want := range map[string]string{
 		`'/a b/agent-mesh' hook stop --managed-by=agent-mesh`: "/a b/agent-mesh|hook|stop|--managed-by=agent-mesh",
 		`"/a\"b" x`: `/a"b|x`,
-		`a\ b c`:     "a b|c",
+		`a\ b c`:    "a b|c",
 	} {
 		w, ok := shellWords(in)
 		if !ok || strings.Join(w, "|") != want {

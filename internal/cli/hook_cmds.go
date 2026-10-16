@@ -20,6 +20,9 @@ import (
 // in settings) is only a backstop.
 const hookTimeout = 800 * time.Millisecond
 
+// ackTimeout bounds the ack sent after a hook's output is written.
+const ackTimeout = 500 * time.Millisecond
+
 // hookLogMax caps <state-dir>/hook.log before it is rotated to hook.log.1.
 const hookLogMax = 256 * 1024
 
@@ -52,6 +55,7 @@ func runHook(ctx context.Context, std cmdIO, args []string) error {
 	if hooksOff() {
 		return nil
 	}
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, hookTimeout)
 	defer cancel()
 	out, h, err := hookEvent(ctx, std.in, args[0])
@@ -67,7 +71,11 @@ func runHook(ctx context.Context, std cmdIO, args []string) error {
 		return nil // not acked: the messages are delivered again next time
 	}
 	if len(h.shown) > 0 {
-		if _, err := h.c.AckMessages(ctx, h.in.SessionID, h.shown); err != nil {
+		// Own budget: a slow hub must not starve the ack (else the same
+		// messages are injected on every prompt).
+		ackCtx, cancelAck := context.WithTimeout(parent, ackTimeout)
+		defer cancelAck()
+		if _, err := h.c.AckMessages(ackCtx, h.in.SessionID, h.shown); err != nil {
 			logHook(args[0]+" ack", err) // at-least-once: they will show again
 		}
 	}

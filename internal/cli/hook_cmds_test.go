@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -109,10 +108,10 @@ func TestHookStopBlocksOnceAndHonorsStopHookActive(t *testing.T) {
 	h := startHub(t)
 	home := testEnv(t, h)
 	hook(t, "session-start", "hook_session_start.json")
-	// A live waiter (this process) suppresses restart reminders.
+	// A live waiter (the lock held by this process) suppresses restart reminders.
 	dir := waitersDir()
-	_ = os.MkdirAll(dir, 0o700)
-	if err := os.WriteFile(pidPath(dir, fixtureSession), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+	release, _, err := acquireWaiter(dir, fixtureSession)
+	if err != nil || release == nil {
 		t.Fatal(err)
 	}
 	peer(t, h, "done with the migration")
@@ -127,7 +126,7 @@ func TestHookStopBlocksOnceAndHonorsStopHookActive(t *testing.T) {
 		t.Fatalf("nothing unread and waiter alive must allow: %q", out)
 	}
 	// Waiter dies: one reminder per death, then allow.
-	_ = os.Remove(pidPath(dir, fixtureSession))
+	release()
 	if ho, _ := hook(t, "stop", "hook_stop.json"); ho.Decision != "block" || !strings.Contains(ho.Reason, "waiter is not running") {
 		t.Fatalf("reminder: %+v", ho)
 	}
