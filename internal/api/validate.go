@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -127,116 +126,9 @@ func repoErr(s string) error {
 	return err
 }
 
-func checkFence(f int64) error {
-	if f < 1 {
-		return invalid("fence must be >= 1")
-	}
-	return nil
-}
-
-func checkCost(c float64) error {
-	if math.IsNaN(c) || math.IsInf(c, 0) || c < 0 || c > 1e6 {
-		return invalid("cost_usd out of range")
-	}
-	return nil
-}
-
 func checkText(name string, s string) error {
 	if len(s) > maxTextLen || !utf8.ValidString(s) {
 		return invalid("%s must be valid UTF-8 of at most %d bytes", name, maxTextLen)
-	}
-	return nil
-}
-
-// Validate checks a completion report.
-func (r CompleteRequest) Validate() error {
-	if err := checkFence(r.Fence); err != nil {
-		return err
-	}
-	if err := checkCost(r.CostUSD); err != nil {
-		return err
-	}
-	if r.Branch != "" && !ValidBranch(r.Branch) {
-		return invalid("branch is not a valid branch name")
-	}
-	if !ValidPRURL(r.PRURL) {
-		return invalid("pr_url must be an https://github.com/<owner>/<repo>/pull/<n> URL")
-	}
-	for name, v := range map[string]string{"session_id": r.SessionID, "publish_note": r.PublishNote, "summary": r.Summary} {
-		if err := checkText(name, v); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Validate checks a failure report.
-func (r FailRequest) Validate() error {
-	if err := checkFence(r.Fence); err != nil {
-		return err
-	}
-	if err := checkCost(r.CostUSD); err != nil {
-		return err
-	}
-	if err := checkText("reason", r.Reason); err != nil {
-		return err
-	}
-	if err := checkText("session_id", r.SessionID); err != nil {
-		return err
-	}
-	return checkText("worktree", r.Worktree)
-}
-
-// Validate checks a release request.
-func (r ReleaseRequest) Validate() error {
-	if err := checkFence(r.Fence); err != nil {
-		return err
-	}
-	return checkText("reason", r.Reason)
-}
-
-// Validate checks a heartbeat request.
-func (r HeartbeatRequest) Validate() error {
-	if err := checkFence(r.Fence); err != nil {
-		return err
-	}
-	if r.Load != nil {
-		return r.Load.Validate()
-	}
-	return nil
-}
-
-// Validate checks claim capabilities. Empty lists are legal (claim nothing).
-func (r ClaimRequest) Validate() error {
-	if len(r.Repos) > maxListLen || len(r.Modes) > maxListLen || len(r.Profiles) > maxListLen {
-		return invalid("capability lists are limited to %d entries", maxListLen)
-	}
-	if math.IsNaN(r.BudgetCap) || r.BudgetCap < 0 {
-		return invalid("budget_cap out of range")
-	}
-	if err := checkRequestID(r.RequestID); err != nil {
-		return err
-	}
-	if r.Load != nil {
-		return r.Load.Validate()
-	}
-	return nil
-}
-
-// Validate checks a load report; daemons are trusted but not to be careless.
-func (l HostLoad) Validate() error {
-	pct := func(v float64) bool { return v >= 0 && v <= 100 }
-	switch {
-	case l.Cores < 0 || l.RAMGB < 0 || l.Slots < 0 || l.AgentWorktrees < 0 || l.Running < 0:
-		return invalid("load counters must be >= 0")
-	case !pct(l.CPUPct) || !pct(l.MemAvailPct):
-		return invalid("cpu_pct and mem_avail_pct must be within 0..100")
-	}
-	for name, v := range map[string]string{"cpu_model": l.CPUModel, "throttle_reason": l.ThrottleReason,
-		"claude_version": l.ClaudeVersion, "agent_version": l.AgentVersion} {
-		if len(v) > 100 || !utf8.ValidString(v) {
-			return invalid("%s must be valid UTF-8 of at most 100 bytes", name)
-		}
 	}
 	return nil
 }

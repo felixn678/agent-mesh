@@ -56,14 +56,10 @@ func (c *Client) SessionRelease(ctx context.Context, session string, id int64, r
 // when a task this session could claim exists. ClaimableCount is set on every
 // return. An empty Messages and zero ClaimableCount means the wait timed out.
 func (c *Client) InboxWaitClaimable(ctx context.Context, session string, markRead bool, wait time.Duration) (api.InboxResponse, error) {
-	secs := min(max(int(wait/time.Second), 0), 50)
-	q := url.Values{"session": {session}, "wait": {strconv.Itoa(secs) + "s"}, "claimable": {"1"}}
-	if markRead {
-		q.Set("mark_read", "1")
-	}
+	q, timeout := inboxWaitQuery(session, markRead, wait)
+	q.Set("claimable", "1")
 	var out api.InboxResponse
-	_, err := c.doWithTimeout(ctx, time.Duration(secs)*time.Second+10*time.Second, http.MethodGet,
-		"/api/v1/messages/inbox?"+q.Encode(), nil, &out)
+	_, err := c.doWithTimeout(ctx, timeout, http.MethodGet, "/api/v1/messages/inbox?"+q.Encode(), nil, &out)
 	return out, err
 }
 
@@ -72,10 +68,5 @@ func (c *Client) InboxWaitClaimable(ctx context.Context, session string, markRea
 // returns the task this session already holds (same fence) instead of
 // claiming another one.
 func (c *Client) SessionClaimWith(ctx context.Context, session string, req api.SessionClaimRequest) (api.ClaimedTask, error) {
-	var t api.ClaimedTask
-	status, err := c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(session)+"/claim", req, &t)
-	if err == nil && status == http.StatusNoContent {
-		return api.ClaimedTask{}, ErrNoTask
-	}
-	return t, err
+	return c.postClaim(ctx, "/api/v1/sessions/"+url.PathEscape(session)+"/claim", req)
 }
