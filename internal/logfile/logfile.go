@@ -3,8 +3,10 @@
 package logfile
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -76,9 +78,11 @@ func (r *Rotating) rotate() {
 	for i := r.keep - 1; i >= 1; i-- {
 		_ = os.Rename(r.path+"."+strconv.Itoa(i), r.path+"."+strconv.Itoa(i+1))
 	}
-	if err := os.Rename(r.path, r.path+".1"); err != nil {
+	if err := os.Rename(r.path, r.path+".1"); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return
 	}
+	// ErrNotExist: the live file was deleted under us (e.g. someone cleaned
+	// the log directory); fall through and start a fresh one.
 	old := r.f
 	if err := r.open(); err != nil {
 		r.f = old // keep the renamed file open; better than dropping lines
@@ -102,13 +106,31 @@ func Setup(path string) (io.Closer, error) {
 		return nil, err
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(r, nil)))
-	trimStderr(os.Stderr, maxStderrBytes)
+	if trimStderr(os.Stderr, maxStderrBytes) {
+		rewindIfSameFile(os.Stdout, os.Stderr) // launchd points both at one file
+	}
 	return r, nil
 }
 
-// trimStderr empties f when it is a regular file larger than max.
-func trimStderr(f *os.File, max int64) {
-	if st, err := f.Stat(); err == nil && st.Mode().IsRegular() && st.Size() > max {
-		_ = f.Truncate(0)
+// trimStderr empties f when it is a regular file larger than max, and
+// rewinds it: a descriptor opened without O_APPEND would otherwise keep
+// writing at the old offset and leave a sparse file as large as before.
+func trimStderr(f *os.File, max int64) bool {
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() || st.Size() <= max {
+		return false
+	}
+	_ = f.Truncate(0)
+	_, _ = f.Seek(0, io.SeekStart)
+	return true
+}
+
+// rewindIfSameFile rewinds f when it refers to the same file as trimmed (for
+// example stdout and stderr opened separately on one log path).
+func rewindIfSameFile(f, trimmed *os.File) {
+	a, err1 := f.Stat()
+	b, err2 := trimmed.Stat()
+	if err1 == nil && err2 == nil && os.SameFile(a, b) {
+		_, _ = f.Seek(0, io.SeekStart)
 	}
 }

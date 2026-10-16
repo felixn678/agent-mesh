@@ -80,6 +80,11 @@ func TestSystemdInstallIsIdempotent(t *testing.T) {
 	if err != nil || !strings.Contains(string(body), "ExecStart=/fake/bin/agent-mesh daemon") {
 		t.Fatalf("unit: %v %s", err, body)
 	}
+	// systemd keeps stdout/stderr in the journal, which rotates on its own:
+	// the unit must not make the process write its own --log-file.
+	if strings.Contains(string(body), "--log-file") {
+		t.Errorf("systemd unit passes --log-file:\n%s", body)
+	}
 	n := len(r.calls)
 	if err := m.Install(context.Background(), u); err != nil {
 		t.Fatal(err)
