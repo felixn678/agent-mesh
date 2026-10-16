@@ -94,8 +94,14 @@ func (s TaskSpec) WithDefaults() TaskSpec {
 func (s TaskSpec) Validate() error {
 	s = s.WithDefaults()
 	switch {
-	case !ValidRepo(s.Repo):
-		return invalid("repo must match %s", repoRE)
+	case repoErr(s.Repo) != nil:
+		return repoErr(s.Repo)
+	case s.TargetHost != "" && !ValidHostName(s.TargetHost):
+		return invalid("target_host must match %s", hostRE)
+	case s.TargetSession != "" && !ValidSessionID(s.TargetSession):
+		return invalid("target_session must match %s", sessionIDRE)
+	case s.CreatedBySession != "" && !ValidSessionID(s.CreatedBySession):
+		return invalid("created_by_session must match %s", sessionIDRE)
 	case !ValidBaseBranch(s.BaseBranch):
 		return invalid("base_branch is not a valid branch name (or uses the reserved %s prefix)", branchPrefix)
 	case !ValidPermissionMode(s.PermissionMode):
@@ -114,6 +120,11 @@ func (s TaskSpec) Validate() error {
 		return invalid("max_attempts must be 1..%d", MaxAttemptsLimit)
 	}
 	return nil
+}
+
+func repoErr(s string) error {
+	_, err := CanonicalRepo(s)
+	return err
 }
 
 func checkFence(f int64) error {
@@ -151,7 +162,7 @@ func (r CompleteRequest) Validate() error {
 	if !ValidPRURL(r.PRURL) {
 		return invalid("pr_url must be an https://github.com/<owner>/<repo>/pull/<n> URL")
 	}
-	for name, v := range map[string]string{"session_id": r.SessionID, "publish_note": r.PublishNote} {
+	for name, v := range map[string]string{"session_id": r.SessionID, "publish_note": r.PublishNote, "summary": r.Summary} {
 		if err := checkText(name, v); err != nil {
 			return err
 		}
@@ -168,6 +179,9 @@ func (r FailRequest) Validate() error {
 		return err
 	}
 	if err := checkText("reason", r.Reason); err != nil {
+		return err
+	}
+	if err := checkText("session_id", r.SessionID); err != nil {
 		return err
 	}
 	return checkText("worktree", r.Worktree)

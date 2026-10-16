@@ -32,6 +32,11 @@ func (r RegisterSessionRequest) Validate() error {
 	if len(r.Name) > 100 || !utf8.ValidString(r.Name) {
 		return invalid("name must be valid UTF-8 of at most 100 bytes")
 	}
+	if r.Repo != "" {
+		if _, err := NormalizeRepo(r.Repo); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -22,7 +22,8 @@ const taskCols = `id, repo, base_branch, prompt, permission_mode, tool_profile, 
  COALESCE(lease_expires_at,0), COALESCE(last_heartbeat_at,0), COALESCE(branch,''),
  COALESCE(pr_url,''), COALESCE(session_id,''), COALESCE(worktree,''), cost_usd,
  COALESCE(publish_note,''), COALESCE(reason,''), COALESCE(created_by,''),
- created_at, updated_at, COALESCE(finished_at,0)`
+ created_at, updated_at, COALESCE(finished_at,0), COALESCE(target_host,''),
+ COALESCE(target_session,''), COALESCE(created_by_session,''), COALESCE(summary,'')`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -31,7 +32,8 @@ func scanTask(r scanner) (api.Task, error) {
 	err := r.Scan(&t.ID, &t.Repo, &t.BaseBranch, &t.Prompt, &t.PermissionMode, &t.ToolProfile,
 		&t.MaxBudgetUSD, &t.Host, &t.State, &t.ClaimedBy, &t.Fence, &t.Attempts, &t.MaxAttempts,
 		&t.LeaseExpiresAt, &t.LastHeartbeat, &t.Branch, &t.PRURL, &t.SessionID, &t.Worktree,
-		&t.CostUSD, &t.PublishNote, &t.Reason, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.FinishedAt)
+		&t.CostUSD, &t.PublishNote, &t.Reason, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt, &t.FinishedAt,
+		&t.TargetHost, &t.TargetSession, &t.CreatedBySession, &t.Summary)
 	return t, err
 }
 
@@ -48,17 +50,24 @@ func (s *Store) Add(ctx context.Context, spec api.TaskSpec, createdBy string) (a
 	if err := spec.Validate(); err != nil {
 		return api.Task{}, err
 	}
+	repo, err := api.CanonicalRepo(spec.Repo)
+	if err != nil {
+		return api.Task{}, err
+	}
+	spec.Repo = repo
 	now := s.ms()
 	row := s.db.QueryRowContext(ctx, `INSERT INTO tasks
 	  (repo, base_branch, prompt, permission_mode, tool_profile, max_budget_usd, host, max_attempts,
-	   created_by, created_at, updated_at)
-	  VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING `+taskCols,
+	   created_by, created_at, updated_at, target_host, target_session, created_by_session)
+	  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING `+taskCols,
 		spec.Repo, spec.BaseBranch, spec.Prompt, spec.PermissionMode, spec.ToolProfile,
-		spec.MaxBudgetUSD, nullable(spec.Host), spec.MaxAttempts, nullable(createdBy), now, now)
+		spec.MaxBudgetUSD, nullable(spec.Host), spec.MaxAttempts, nullable(createdBy), now, now,
+		nullable(spec.TargetHost), nullable(spec.TargetSession), nullable(spec.CreatedBySession))
 	t, err := scanTask(row)
 	if err != nil {
 		return api.Task{}, fmt.Errorf("insert task: %w", err)
 	}
+	s.notify.signalAll() // idle sessions waiting for claimable work
 	return t, nil
 }
 
@@ -142,7 +151,11 @@ func (s *Store) Cancel(ctx context.Context, id int64) (api.Task, error) {
 // Requeue moves a stuck or cancelled task back to queued with attempts reset.
 // The fence is untouched; the next claim bumps it.
 func (s *Store) Requeue(ctx context.Context, id int64) (api.Task, error) {
-	return s.transition(ctx, id,
+	t, err := s.transition(ctx, id,
 		"state='queued', attempts=0, lease_expires_at=NULL, finished_at=NULL, reason=NULL",
 		"state IN ('stuck','cancelled')")
+	if err == nil {
+		s.notify.signalAll()
+	}
+	return t, err
 }

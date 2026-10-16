@@ -28,12 +28,17 @@ func (s *Store) RegisterSession(ctx context.Context, host string, r api.Register
 	if err := r.Validate(); err != nil {
 		return api.Session{}, err
 	}
+	repo := ""
+	if r.Repo != "" {
+		repo, _ = api.NormalizeRepo(r.Repo) // Validate accepted it
+	}
 	now := s.ms()
-	res, err := s.db.ExecContext(ctx, `INSERT INTO sessions (id, host, cwd, name, started_at, last_seen_at)
-	  VALUES (?1,?2,?3,?4,?5,?5)
+	res, err := s.db.ExecContext(ctx, `INSERT INTO sessions (id, host, cwd, name, repo, started_at, last_seen_at)
+	  VALUES (?1,?2,?3,?4,?6,?5,?5)
 	  ON CONFLICT(id) DO UPDATE SET cwd=excluded.cwd, name=excluded.name, last_seen_at=excluded.last_seen_at,
+	    repo=CASE WHEN excluded.repo <> '' THEN excluded.repo ELSE sessions.repo END,
 	    ended_at=NULL, started_at=CASE WHEN ended_at IS NULL THEN started_at ELSE excluded.started_at END
-	  WHERE sessions.host = excluded.host`, r.ID, host, r.Cwd, r.Name, now)
+	  WHERE sessions.host = excluded.host`, r.ID, host, r.Cwd, r.Name, now, repo)
 	if err != nil {
 		return api.Session{}, fmt.Errorf("register session: %w", err)
 	}
@@ -43,12 +48,12 @@ func (s *Store) RegisterSession(ctx context.Context, host string, r api.Register
 	return s.getSession(ctx, r.ID)
 }
 
-const sessionCols = `id, host, cwd, name, started_at, last_seen_at, COALESCE(ended_at,0),
+const sessionCols = `id, host, cwd, name, repo, started_at, last_seen_at, COALESCE(ended_at,0),
   (ended_at IS NULL AND last_seen_at >= ?1)`
 
 func scanSession(r scanner) (api.Session, error) {
 	var x api.Session
-	err := r.Scan(&x.ID, &x.Host, &x.Cwd, &x.Name, &x.StartedAt, &x.LastSeenAt, &x.EndedAt, &x.Alive)
+	err := r.Scan(&x.ID, &x.Host, &x.Cwd, &x.Name, &x.Repo, &x.StartedAt, &x.LastSeenAt, &x.EndedAt, &x.Alive)
 	return x, err
 }
 

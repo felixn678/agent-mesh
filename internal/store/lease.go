@@ -25,6 +25,8 @@ WHERE id = (SELECT id FROM tasks
     AND tool_profile    IN (SELECT value FROM json_each(:profiles))
     AND max_budget_usd <= :budget_cap
     AND (host IS NULL OR host = :host)
+    AND (target_host IS NULL OR target_host = :host)
+    AND target_session IS NULL
   ORDER BY id LIMIT 1)
 RETURNING id, fence, repo, base_branch, prompt, permission_mode, tool_profile, max_budget_usd`
 
@@ -39,10 +41,16 @@ func jsonList(v []string) string {
 // Claim hands the oldest eligible task to host, or (nil, nil) when none fits.
 func (s *Store) Claim(ctx context.Context, host string, req api.ClaimRequest) (*api.ClaimedTask, error) {
 	now := s.ms()
+	repos := make([]string, 0, len(req.Repos))
+	for _, r := range req.Repos { // same normalization as stored task repos
+		if c, err := api.CanonicalRepo(r); err == nil {
+			repos = append(repos, c)
+		}
+	}
 	var c api.ClaimedTask
 	err := s.db.QueryRowContext(ctx, claimSQL,
-		sql.Named("host", host), sql.Named("now", now), sql.Named("ttl", s.cfg.TTL.Milliseconds()),
-		sql.Named("repos", jsonList(req.Repos)), sql.Named("modes", jsonList(req.Modes)),
+		sql.Named("host", host), sql.Named("now", now), sql.Named("ttl", s.cfg.ttlFor(host).Milliseconds()),
+		sql.Named("repos", jsonList(repos)), sql.Named("modes", jsonList(req.Modes)),
 		sql.Named("profiles", jsonList(req.Profiles)), sql.Named("budget_cap", req.BudgetCap),
 	).Scan(&c.ID, &c.Fence, &c.Repo, &c.BaseBranch, &c.Prompt, &c.PermissionMode, &c.ToolProfile, &c.MaxBudgetUSD)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -62,7 +70,7 @@ func (s *Store) Heartbeat(ctx context.Context, host string, id, fence int64) err
 	err := s.db.QueryRowContext(ctx, `UPDATE tasks SET lease_expires_at=:now+:ttl, last_heartbeat_at=:now, updated_at=:now
 	  WHERE id=:id AND fence=:fence AND claimed_by=:host AND state='running'
 	    AND lease_expires_at >= :now - :revive RETURNING id`,
-		sql.Named("now", now), sql.Named("ttl", s.cfg.TTL.Milliseconds()), sql.Named("id", id),
+		sql.Named("now", now), sql.Named("ttl", s.cfg.ttlFor(host).Milliseconds()), sql.Named("id", id),
 		sql.Named("fence", fence), sql.Named("host", host), sql.Named("revive", s.cfg.ReviveWindow.Milliseconds()),
 	).Scan(&got)
 	if err == nil {
@@ -114,6 +122,7 @@ func (s *Store) finish(ctx context.Context, host string, id, fence int64, set st
 		return false, fmt.Errorf("update lease: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
+		s.notify.signalAll() // creator notice may have been inserted; requeues are claimable
 		return false, nil
 	}
 	state, err := s.classify(ctx, host, id, fence)
@@ -136,10 +145,10 @@ func (s *Store) Complete(ctx context.Context, host string, id int64, r api.Compl
 	}
 	return s.finish(ctx, host, id, r.Fence,
 		`state='done', branch=:branch, pr_url=:pr, session_id=:sess, cost_usd=cost_usd+:cost,
-		 publish_note=:note, lease_expires_at=NULL, finished_at=:now`,
+		 publish_note=:note, summary=:summary, lease_expires_at=NULL, finished_at=:now`,
 		[]string{api.StateDone},
 		sql.Named("branch", nullable(r.Branch)), sql.Named("pr", nullable(r.PRURL)),
-		sql.Named("sess", nullable(r.SessionID)), sql.Named("cost", r.CostUSD), sql.Named("note", nullable(r.PublishNote)))
+		sql.Named("sess", nullable(r.SessionID)), sql.Named("cost", r.CostUSD), sql.Named("note", nullable(r.PublishNote)), sql.Named("summary", nullable(r.Summary)))
 }
 
 // Fail ends the attempt. With Retry and attempts left the task is requeued,
@@ -155,9 +164,10 @@ func (s *Store) Fail(ctx context.Context, host string, id int64, r api.FailReque
 	return s.finish(ctx, host, id, r.Fence,
 		`state=CASE WHEN :retry AND attempts<max_attempts THEN 'queued' ELSE 'stuck' END,
 		 finished_at=CASE WHEN :retry AND attempts<max_attempts THEN NULL ELSE :now END,
-		 cost_usd=cost_usd+:cost, reason=:reason, worktree=:wt, lease_expires_at=NULL`,
+		 cost_usd=cost_usd+:cost, reason=:reason, worktree=:wt, session_id=COALESCE(NULLIF(:sess,''), session_id),
+		 lease_expires_at=NULL`,
 		ok, sql.Named("retry", r.Retry), sql.Named("cost", r.CostUSD),
-		sql.Named("reason", nullable(r.Reason)), sql.Named("wt", nullable(r.Worktree)))
+		sql.Named("reason", nullable(r.Reason)), sql.Named("wt", nullable(r.Worktree)), sql.Named("sess", r.SessionID))
 }
 
 // Release hands the task back to the queue without consuming an attempt.

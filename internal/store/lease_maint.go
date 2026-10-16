@@ -33,6 +33,9 @@ func (s *Store) Reap(ctx context.Context) (ReapResult, error) {
 		return r, fmt.Errorf("reap at cap: %w", err)
 	}
 	r.Stuck, _ = res.RowsAffected()
+	if r.Stuck > 0 {
+		s.notify.signalAll() // creators of stuck tasks got a notice
+	}
 
 	// fence+1 so a zombie worker's later heartbeat/complete gets lease_lost.
 	res, err = s.db.ExecContext(ctx, `UPDATE tasks SET state='queued', fence=fence+1,

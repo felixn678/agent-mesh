@@ -20,6 +20,7 @@ type Config struct {
 	StaleRequeue   time.Duration     `toml:"stale_requeue"`
 	ReviveWindow   time.Duration     `toml:"revive_window"`
 	SessionAlive   time.Duration     `toml:"session_alive_window"`
+	SessionTTL     time.Duration     `toml:"session_lease_ttl"` // lease for tasks claimed by interactive sessions
 	Retention      time.Duration     `toml:"retention"`
 	HostTokens     map[string]string `toml:"host_tokens"`    // daemons: lease, load, reads
 	SessionTokens  map[string]string `toml:"session_tokens"` // interactive sessions: messaging, task add, reads
@@ -35,6 +36,7 @@ func DefaultConfig() Config {
 		StaleRequeue: time.Hour,
 		ReviveWindow: 30 * time.Minute,
 		SessionAlive: api.SessionAliveWindow,
+		SessionTTL:   store.DefaultSessionTTL,
 		Retention:    7 * 24 * time.Hour,
 	}
 }
@@ -74,7 +76,7 @@ func (c Config) Validate() error {
 	}
 	for name, d := range map[string]time.Duration{"lease_ttl": c.LeaseTTL, "reap_interval": c.ReapInterval,
 		"stale_requeue": c.StaleRequeue, "revive_window": c.ReviveWindow,
-		"session_alive_window": c.SessionAlive, "retention": c.Retention} {
+		"session_alive_window": c.SessionAlive, "session_lease_ttl": c.SessionTTL, "retention": c.Retention} {
 		if d <= 0 {
 			return fmt.Errorf("%s must be positive", name)
 		}
@@ -85,5 +87,5 @@ func (c Config) Validate() error {
 // Lease converts the timings for store.New.
 func (c Config) Lease() store.LeaseConfig {
 	return store.LeaseConfig{TTL: c.LeaseTTL, StaleRequeue: c.StaleRequeue, ReviveWindow: c.ReviveWindow,
-		SessionAlive: c.SessionAlive, Retention: c.Retention}
+		SessionAlive: c.SessionAlive, SessionTTL: c.SessionTTL, Retention: c.Retention}
 }

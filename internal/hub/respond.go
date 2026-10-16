@@ -66,7 +66,11 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 func taskID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	raw := r.PathValue("tid") // session task routes carry the session in {id}
+	if raw == "" {
+		raw = r.PathValue("id")
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || id < 1 {
 		writeError(w, http.StatusBadRequest, api.CodeInvalid, "invalid task id")
 		return 0, false

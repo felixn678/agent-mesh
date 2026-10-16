@@ -89,6 +89,15 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request, p api.Principal) 
 		}
 		defer s.waits.release(p.Host)
 	}
+	if c := q.Get("claimable"); c == "1" || c == "true" {
+		resp, err := s.st.WaitInboxClaimable(r.Context(), p.Host, q.Get("session"), mark == "1" || mark == "true", wait)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
 	msgs, err := s.st.WaitInbox(r.Context(), p.Host, q.Get("session"), mark == "1" || mark == "true", wait)
 	if err != nil {
 		s.fail(w, err)

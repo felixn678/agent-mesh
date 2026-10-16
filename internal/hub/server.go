@@ -65,6 +65,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/sessions", s.authed(adminOrSession, s.listSessions))
 	m.HandleFunc("POST /api/v1/messages", s.authed(adminOrSession, s.sendMessage))
 	m.HandleFunc("GET /api/v1/messages/inbox", s.authed(isSession, s.inbox))
+	s.routeSessionTasks()
 }
 
 // Handler returns the root handler with the body-size limit applied.

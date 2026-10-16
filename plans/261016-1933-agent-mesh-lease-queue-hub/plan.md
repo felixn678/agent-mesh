@@ -156,3 +156,6 @@ Re-read plan.md + all 5 phases after edits. Removed or replaced:
 9. ~~Host token in bypassPermissions sessions~~ → lead decision 2026-10-16: separate per-host **session token** (host identity; sessions, messages, task add, reads; no lease ops, no cancel/requeue). Idle-wake waiter accepted (+1-2h).
 10. `SessionAliveWindow` in code is 10 min; idle sessions only touch `last_seen` on prompt/stop → plan recommends 12 h (phase 1).
 11. Wake waiter adds ~1–2h not in the 32h budget; accept or trim (e.g. drop Stop waiter-reminder)?
+
+## Addendum: interactive session workers
+Interactive sessions can claim tasks (same fence/lease semantics, holder `session:<id>`, 30 min TTL) in addition to daemons. Added: normalized repo identity (`api.NormalizeRepo`, sessions carry `repo`), task `target_host` / `target_session` / `created_by_session`, `POST /sessions/{id}/claim` plus per-session heartbeat/complete/fail/release routes (session token), a hub-to-creator completion message (SQLite trigger on done/stuck), and `claimable=1` on the inbox long poll so idle sessions wake for work. Daemons never take `target_session` tasks and honour `target_host`. Schema v2 upgrades v1 in place. Contract details: see the "Interactive session workers" section of the phase-01 implementation report.

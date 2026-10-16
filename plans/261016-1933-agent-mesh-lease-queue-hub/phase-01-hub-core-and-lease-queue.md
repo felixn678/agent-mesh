@@ -262,3 +262,6 @@ Create: all files in layout + `go.mod`, `go.sum`, `.gitignore` (`/bin/`, `*.db`,
 | Token theft | M×H | per-host tokens cannot cancel/requeue; admin separate; hashes only in hub.toml. Host token now also on interactive hosts (decision C) → see plan.md open question 9 |
 | Message flood / disk growth | L×M | 8 KB body, 100 unread cap, 7 d GC, 128 KB MaxBytes |
 | Rollback | — | greenfield; revert commits; delete DB file. Future schema: forward-only `user_version` migrations |
+
+## Addendum: interactive session workers
+Interactive sessions can claim tasks (same fence/lease semantics, holder `session:<id>`, 30 min TTL) in addition to daemons. Added: normalized repo identity (`api.NormalizeRepo`, sessions carry `repo`), task `target_host` / `target_session` / `created_by_session`, `POST /sessions/{id}/claim` plus per-session heartbeat/complete/fail/release routes (session token), a hub-to-creator completion message (SQLite trigger on done/stuck), and `claimable=1` on the inbox long poll so idle sessions wake for work. Daemons never take `target_session` tasks and honour `target_host`. Schema v2 upgrades v1 in place. Contract details: see the "Interactive session workers" section of the phase-01 implementation report.

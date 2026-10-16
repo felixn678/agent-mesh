@@ -15,7 +15,7 @@ func (s *Server) addTask(w http.ResponseWriter, r *http.Request, p api.Principal
 	if !decode(w, r, &spec) {
 		return
 	}
-	t, err := s.st.Add(r.Context(), spec, p.CreatedBy())
+	t, err := s.st.AddTask(r.Context(), spec, p)
 	if err != nil {
 		s.fail(w, err)
 		return

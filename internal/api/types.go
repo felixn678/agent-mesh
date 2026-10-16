@@ -45,36 +45,48 @@ type TaskSpec struct {
 	MaxBudgetUSD   float64 `json:"max_budget_usd"`
 	Host           string  `json:"host,omitempty"` // optional constraint
 	MaxAttempts    int     `json:"max_attempts,omitempty"`
+	// TargetHost / TargetSession restrict who may claim the task. A task with
+	// a TargetSession is claimable only by that interactive session.
+	TargetHost    string `json:"target_host,omitempty"`
+	TargetSession string `json:"target_session,omitempty"`
+	// CreatedBySession is the session that asked for the work; the hub
+	// messages it when the task completes, fails or gets stuck. The hub
+	// verifies the session belongs to the caller's host.
+	CreatedBySession string `json:"created_by_session,omitempty"`
 }
 
 // Task is a stored task. Nullable columns are zero values when unset.
 type Task struct {
-	ID             int64   `json:"id"`
-	Repo           string  `json:"repo"`
-	BaseBranch     string  `json:"base_branch"`
-	Prompt         string  `json:"prompt"`
-	PermissionMode string  `json:"permission_mode"`
-	ToolProfile    string  `json:"tool_profile"`
-	MaxBudgetUSD   float64 `json:"max_budget_usd"`
-	Host           string  `json:"host,omitempty"`
-	State          string  `json:"state"`
-	ClaimedBy      string  `json:"claimed_by,omitempty"`
-	Fence          int64   `json:"fence"`
-	Attempts       int     `json:"attempts"`
-	MaxAttempts    int     `json:"max_attempts"`
-	LeaseExpiresAt int64   `json:"lease_expires_at,omitempty"`
-	LastHeartbeat  int64   `json:"last_heartbeat_at,omitempty"`
-	Branch         string  `json:"branch,omitempty"`
-	PRURL          string  `json:"pr_url,omitempty"`
-	SessionID      string  `json:"session_id,omitempty"`
-	Worktree       string  `json:"worktree,omitempty"`
-	CostUSD        float64 `json:"cost_usd"`
-	PublishNote    string  `json:"publish_note,omitempty"`
-	Reason         string  `json:"reason,omitempty"`
-	CreatedBy      string  `json:"created_by,omitempty"`
-	CreatedAt      int64   `json:"created_at"`
-	UpdatedAt      int64   `json:"updated_at"`
-	FinishedAt     int64   `json:"finished_at,omitempty"`
+	ID               int64   `json:"id"`
+	Repo             string  `json:"repo"`
+	BaseBranch       string  `json:"base_branch"`
+	Prompt           string  `json:"prompt"`
+	PermissionMode   string  `json:"permission_mode"`
+	ToolProfile      string  `json:"tool_profile"`
+	MaxBudgetUSD     float64 `json:"max_budget_usd"`
+	Host             string  `json:"host,omitempty"`
+	State            string  `json:"state"`
+	ClaimedBy        string  `json:"claimed_by,omitempty"`
+	Fence            int64   `json:"fence"`
+	Attempts         int     `json:"attempts"`
+	MaxAttempts      int     `json:"max_attempts"`
+	LeaseExpiresAt   int64   `json:"lease_expires_at,omitempty"`
+	LastHeartbeat    int64   `json:"last_heartbeat_at,omitempty"`
+	Branch           string  `json:"branch,omitempty"`
+	PRURL            string  `json:"pr_url,omitempty"`
+	SessionID        string  `json:"session_id,omitempty"`
+	Worktree         string  `json:"worktree,omitempty"`
+	CostUSD          float64 `json:"cost_usd"`
+	PublishNote      string  `json:"publish_note,omitempty"`
+	Reason           string  `json:"reason,omitempty"`
+	CreatedBy        string  `json:"created_by,omitempty"`
+	TargetHost       string  `json:"target_host,omitempty"`
+	TargetSession    string  `json:"target_session,omitempty"`
+	CreatedBySession string  `json:"created_by_session,omitempty"`
+	Summary          string  `json:"summary,omitempty"`
+	CreatedAt        int64   `json:"created_at"`
+	UpdatedAt        int64   `json:"updated_at"`
+	FinishedAt       int64   `json:"finished_at,omitempty"`
 }
 
 // HostLoad is what a daemon reports about itself on every poll tick.
@@ -137,16 +149,18 @@ type CompleteRequest struct {
 	SessionID   string  `json:"session_id,omitempty"`
 	CostUSD     float64 `json:"cost_usd"`
 	PublishNote string  `json:"publish_note,omitempty"`
+	Summary     string  `json:"summary,omitempty"` // result text relayed to the creator session
 }
 
 // FailRequest ends an attempt unsuccessfully; Retry asks for requeue while
 // attempts remain.
 type FailRequest struct {
-	Fence    int64   `json:"fence"`
-	Retry    bool    `json:"retry"`
-	CostUSD  float64 `json:"cost_usd"`
-	Reason   string  `json:"reason,omitempty"`
-	Worktree string  `json:"worktree,omitempty"`
+	Fence     int64   `json:"fence"`
+	Retry     bool    `json:"retry"`
+	CostUSD   float64 `json:"cost_usd"`
+	Reason    string  `json:"reason,omitempty"`
+	Worktree  string  `json:"worktree,omitempty"`
+	SessionID string  `json:"session_id,omitempty"` // Claude session id of the worker run
 }
 
 // ReleaseRequest hands a task back without consuming an attempt.
@@ -168,6 +182,7 @@ type Session struct {
 	Host       string `json:"host"`
 	Cwd        string `json:"cwd,omitempty"`
 	Name       string `json:"name,omitempty"`
+	Repo       string `json:"repo,omitempty"` // normalized project key
 	StartedAt  int64  `json:"started_at"`
 	LastSeenAt int64  `json:"last_seen_at"`
 	EndedAt    int64  `json:"ended_at,omitempty"`
@@ -179,6 +194,7 @@ type RegisterSessionRequest struct {
 	ID   string `json:"id"`
 	Cwd  string `json:"cwd,omitempty"`
 	Name string `json:"name,omitempty"`
+	Repo string `json:"repo,omitempty"` // git remote URL or key; normalized by the hub; empty keeps the stored value
 }
 
 // EndSessionRequest marks a session ended.
@@ -202,4 +218,11 @@ type Message struct {
 	Body        string `json:"body"`
 	CreatedAt   int64  `json:"created_at"`
 	ReadAt      int64  `json:"read_at,omitempty"`
+}
+
+// InboxResponse is the body of an inbox poll with claimable=1: unread
+// messages plus how many queued tasks this session could claim right now.
+type InboxResponse struct {
+	Messages       []Message `json:"messages"`
+	ClaimableCount int       `json:"claimable_count"`
 }

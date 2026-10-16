@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/felixn678/agent-mesh/internal/api"
@@ -23,6 +24,26 @@ type LeaseConfig struct {
 	ReviveWindow time.Duration // an expired, unreclaimed lease may still heartbeat this long
 	Retention    time.Duration // ended/dead sessions and read messages are pruned after this (0 = 7 days)
 	SessionAlive time.Duration // a session unseen this long is not alive (0 = api.SessionAliveWindow)
+	SessionTTL   time.Duration // lease length for interactive-session holders (0 = 30 min)
+}
+
+// DefaultSessionTTL is the interactive lease length: sessions heartbeat
+// rarely (only while their turn runs), so it is much longer than a daemon's.
+const DefaultSessionTTL = 30 * time.Minute
+
+// SessionHolderPrefix marks lease holders that are interactive sessions.
+// Host names cannot contain ':', so holders never collide with daemons.
+const SessionHolderPrefix = "session:"
+
+// ttlFor returns the lease length for a holder ("session:<id>" or a host).
+func (c LeaseConfig) ttlFor(holder string) time.Duration {
+	if !strings.HasPrefix(holder, SessionHolderPrefix) {
+		return c.TTL
+	}
+	if c.SessionTTL <= 0 {
+		return DefaultSessionTTL
+	}
+	return c.SessionTTL
 }
 
 func (c LeaseConfig) sessionAlive() time.Duration {

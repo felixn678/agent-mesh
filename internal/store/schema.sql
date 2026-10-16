@@ -1,4 +1,4 @@
--- Schema version 1. Statements are idempotent so concurrent first opens are safe.
+-- Schema version 2 (v1 -> v2 adds the columns marked "v2" via ALTER, see db.go). Statements are idempotent so concurrent first opens are safe.
 CREATE TABLE IF NOT EXISTS tasks (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,  -- ids never reused (branch names embed id)
   repo             TEXT NOT NULL,                 -- logical key; host maps to clone URL
@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   publish_note     TEXT,                          -- e.g. leftover_commit, no_changes, pr_failed
   reason           TEXT,                          -- last failure/stuck/release reason (redacted)
   created_by       TEXT,
+  target_host      TEXT,                          -- v2: only this host may claim
+  target_session   TEXT,                          -- v2: only this interactive session may claim
+  created_by_session TEXT,                        -- v2: gets a hub message when the task ends
+  summary          TEXT,                          -- v2: worker result text
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL,
   finished_at      INTEGER
@@ -57,6 +61,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   host         TEXT NOT NULL,                     -- from the token, never the body
   cwd          TEXT NOT NULL DEFAULT '',
   name         TEXT NOT NULL DEFAULT '',
+  repo         TEXT NOT NULL DEFAULT '',          -- v2: normalized project key
   started_at   INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL,
   ended_at     INTEGER
@@ -74,3 +79,18 @@ CREATE TABLE IF NOT EXISTS messages (
   read_at      INTEGER
 );
 CREATE INDEX IF NOT EXISTS messages_inbox ON messages(to_session, read_at, id);
+
+-- Completion notice: when a task created by a session reaches done or stuck,
+-- the creator gets a message from "hub" in the same transaction as the state
+-- change, so no code path (complete, fail, reaper) can skip it.
+CREATE TRIGGER IF NOT EXISTS tasks_notify_creator AFTER UPDATE OF state ON tasks
+WHEN NEW.created_by_session IS NOT NULL AND NEW.state IN ('done','stuck') AND OLD.state <> NEW.state
+BEGIN
+  INSERT INTO messages (from_session, from_host, to_session, body, created_at)
+  VALUES ('hub', 'hub', NEW.created_by_session,
+    '[agent-mesh] task #' || NEW.id || ' ' || NEW.state || ' (repo ' || NEW.repo || ')'
+      || COALESCE(char(10) || 'branch: ' || NEW.branch, '')
+      || COALESCE(char(10) || 'pr: ' || NEW.pr_url, '')
+      || COALESCE(char(10) || 'result: ' || substr(CASE WHEN NEW.state = 'done' THEN NEW.summary ELSE NEW.reason END, 1, 2000), ''),
+    NEW.updated_at);
+END;
