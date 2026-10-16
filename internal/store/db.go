@@ -18,7 +18,7 @@ var schemaSQL string
 
 // schemaVersion is stored in PRAGMA user_version. Future changes must be
 // forward-only migrations keyed on it.
-const schemaVersion = 3
+const schemaVersion = 4
 
 // upgradeV1 adds the v2 columns to a v1 database. SQLite has no ADD COLUMN IF
 // NOT EXISTS, so a concurrent first open may find a column already added.
@@ -33,8 +33,12 @@ var upgradeV1 = []string{
 // upgradeV2 adds the v3 claim retry column.
 var upgradeV2 = []string{"ALTER TABLE tasks ADD COLUMN claim_request_id TEXT"}
 
+// upgradeV3 drops the v3 completion trigger; schemaSQL then recreates it with
+// the v4 condition (CREATE TRIGGER IF NOT EXISTS cannot replace a trigger).
+var upgradeV3 = []string{"DROP TRIGGER IF EXISTS tasks_notify_creator"}
+
 // upgrades maps a stored version to the statements that lift it by one.
-var upgrades = map[int][]string{1: upgradeV1, 2: upgradeV2}
+var upgrades = map[int][]string{1: upgradeV1, 2: upgradeV2, 3: upgradeV3}
 
 // Open opens (creating if needed, mode 0600) the hub database and migrates it.
 // synchronous=FULL: a fence that was returned to a worker must survive power

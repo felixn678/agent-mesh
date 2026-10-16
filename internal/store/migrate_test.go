@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/felixn678/agent-mesh/internal/api"
@@ -80,3 +81,38 @@ func TestOpenUpgradesSecondSchemaVersion(t *testing.T) {
 		t.Fatalf("replay after upgrade: %+v %v", b, err)
 	}
 }
+
+// A third-version database replaces the completion trigger, so a late Fail of
+// a reaper-stuck task notifies the creator again.
+func TestOpenUpgradesThirdSchemaVersionTrigger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hub.db")
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"DROP TRIGGER tasks_notify_creator", v3Trigger, "PRAGMA user_version = 3"} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = db.Close()
+	if db, err = store.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var sqlText string
+	if err := db.QueryRow("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='tasks_notify_creator'").Scan(&sqlText); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sqlText, "OLD.lease_expires_at IS NOT NULL") {
+		t.Fatalf("trigger not upgraded: %s", sqlText)
+	}
+}
+
+// v3Trigger is the completion trigger as shipped in schema version 3.
+const v3Trigger = `CREATE TRIGGER tasks_notify_creator AFTER UPDATE OF state ON tasks
+WHEN NEW.created_by_session IS NOT NULL AND NEW.state IN ('done','stuck') AND OLD.state <> NEW.state
+BEGIN
+  INSERT INTO messages (from_session, from_host, to_session, body, created_at)
+  VALUES ('hub', 'hub', NEW.created_by_session, '[agent-mesh] task #' || NEW.id || ' ' || NEW.state, NEW.updated_at);
+END`
