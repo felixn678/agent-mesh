@@ -43,6 +43,7 @@ type Env struct {
 	DataDir   string // e.g. ~/.local/share/agent-mesh (0700)
 	Binary    string // absolute path of the agent-mesh binary services run
 	GOOS      string
+	In        io.Reader // stdin; join reads the invite code from it
 	Out       io.Writer
 	Runner    Runner
 	Mgr       Manager
@@ -67,7 +68,7 @@ func NewEnv(out io.Writer) (*Env, error) {
 		bin = r
 	}
 	e := &Env{Home: home, ConfigDir: cfg, DataDir: filepath.Join(home, ".local", "share", "agent-mesh"),
-		Binary: bin, GOOS: runtime.GOOS, Out: out, Runner: ExecRunner{}, Hostname: os.Hostname}
+		Binary: bin, GOOS: runtime.GOOS, In: os.Stdin, Out: out, Runner: ExecRunner{}, Hostname: os.Hostname}
 	e.Mgr = NewManager(e)
 	return e, nil
 }

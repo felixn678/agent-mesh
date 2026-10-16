@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,13 +25,11 @@ func (a *authenticator) replace(next *authenticator) {
 // cfg. Listen address, database and timings need a restart.
 func (s *Server) Reload(cfg Config) { s.auth.replace(newAuthenticator(cfg)) }
 
-// watchReload applies hub.toml token changes on SIGHUP and records a pidfile
-// next to it. A config that fails to load or validate is logged and ignored,
+// watchReload applies hub.toml token changes on each signal from hup (already
+// registered for SIGHUP by the caller) and records a pidfile next to it. A config that fails to load or validate is logged and ignored,
 // so a bad edit never locks everyone out. The returned func stops watching
 // and removes the pidfile.
-func (s *Server) watchReload(ctx context.Context, path string) (stop func()) {
-	hup := make(chan os.Signal, 1)
-	signal.Notify(hup, syscall.SIGHUP)
+func (s *Server) watchReload(ctx context.Context, path string, hup <-chan os.Signal) (stop func()) {
 	pidPath := filepath.Join(filepath.Dir(path), PidFileName)
 	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
 		s.log.Warn("write pidfile", "path", pidPath, "err", err)
@@ -58,12 +55,13 @@ func (s *Server) watchReload(ctx context.Context, path string) (stop func()) {
 	}()
 	return func() {
 		close(done)
-		signal.Stop(hup)
 		_ = os.Remove(pidPath)
 	}
 }
 
-// SignalReload sends SIGHUP to the hub whose pidfile is at pidPath.
+// SignalReload sends SIGHUP to the hub whose pidfile is at pidPath, after
+// verifying the pid still belongs to an agent-mesh hub process (a stale
+// pidfile may name an unrelated process).
 func SignalReload(pidPath string) error {
 	b, err := os.ReadFile(pidPath)
 	if err != nil {
@@ -72,6 +70,9 @@ func SignalReload(pidPath string) error {
 	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
 	if err != nil || pid <= 0 {
 		return fmt.Errorf("invalid pid in %s", pidPath)
+	}
+	if err := checkHubProcess(pid); err != nil {
+		return fmt.Errorf("%w (stale %s? remove it and restart the hub)", err, pidPath)
 	}
 	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
 		return fmt.Errorf("signal hub pid %d: %w", pid, err)

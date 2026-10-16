@@ -16,7 +16,7 @@ const lumio = "github.com/acme/lumio"
 
 var bg = context.Background()
 
-var joinLineRE = regexp.MustCompile(`agent-mesh join (\S+) (\S+)`)
+var joinLineRE = regexp.MustCompile(`(?s)agent-mesh join (\S+)\n.*paste this code when asked: (\S+)`)
 
 // mesh is the user's two-machine setup: "ubuntu" runs the hub, "mac" joined it.
 type mesh struct {

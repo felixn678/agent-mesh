@@ -21,7 +21,7 @@ const usage = `usage: agent-mesh <command> [args]
 commands:
   up       set up and start the hub on this machine (config, tokens, services)
   invite   mint an invite line for another machine (hub machine)
-  join     join a hub from an invite line (other machines)
+  join     join a hub: agent-mesh join <url>, then paste the invite code
   doctor   check config, tokens, hub, auth and tools
   hub      run the hub server
   daemon   run the pull daemon on this host

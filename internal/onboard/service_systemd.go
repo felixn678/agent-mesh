@@ -23,7 +23,7 @@ func (m *systemdManager) ctl(ctx context.Context, args ...string) ([]byte, error
 }
 
 // renderSystemd mirrors deploy/systemd: restart on failure, private umask.
-func renderSystemd(bin string, u Unit) string {
+func renderSystemd(bin, path string, u Unit) string {
 	after := ""
 	extra := "TimeoutStopSec=60\nKillMode=mixed\n" // let the daemon release leases before workers die
 	if u.Name == "daemon" {
@@ -37,14 +37,14 @@ Description=%s
 
 [Service]
 ExecStart=%s %s
-Environment=PATH=%%h/.local/bin:%%h/go/bin:/usr/local/bin:/usr/bin:/bin
+Environment="PATH=%s"
 Restart=on-failure
 RestartSec=10
 UMask=0077
 %s
 [Install]
 WantedBy=default.target
-`, u.Desc, after, bin, strings.Join(u.Args, " "), extra)
+`, u.Desc, after, bin, strings.Join(u.Args, " "), systemdEscape(path), extra)
 }
 
 func (m *systemdManager) Install(ctx context.Context, u Unit) error {
@@ -56,7 +56,7 @@ func (m *systemdManager) Install(ctx context.Context, u Unit) error {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, m.unitName(u.Name))
-	want := []byte(renderSystemd(m.e.Binary, u))
+	want := []byte(renderSystemd(m.e.Binary, m.e.servicePath(), u))
 	cur, _ := os.ReadFile(path)
 	changed := !bytes.Equal(cur, want)
 	if changed {

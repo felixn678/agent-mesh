@@ -1,11 +1,28 @@
 package onboard
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"strings"
 )
+
+// readInviteCode reads one line (the invite code) from stdin, so the secret
+// stays out of argv and shell history.
+func (e *Env) readInviteCode() (string, error) {
+	if e.In == nil {
+		return "", errors.New("no stdin to read the invite code from")
+	}
+	e.printf("Paste the invite code and press Enter: ")
+	line, err := bufio.NewReaderSize(io.LimitReader(e.In, 64<<10), 64<<10).ReadString('\n')
+	if err != nil && (err != io.EOF || strings.TrimSpace(line) == "") {
+		return "", errors.New("no invite code received on stdin")
+	}
+	return strings.TrimSpace(line), nil
+}
 
 // Join configures this machine from an invite bundle: tokens, daemon.toml,
 // client.toml and the daemon service. Nothing is written if the hub cannot be
@@ -13,29 +30,37 @@ import (
 func Join(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("join", flag.ContinueOnError)
 	noService := fs.Bool("no-service", false, "write config only; do not install or start the daemon service")
-	const usage = "usage: agent-mesh join <hub-url> <invite-bundle> [--no-service]"
+	const usage = "usage: agent-mesh join <hub-url> [--no-service]   (then paste the invite code when asked)\n       agent-mesh join <hub-url> <invite-code>|- [--no-service]"
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	pos := fs.Args()
-	if len(pos) >= 2 { // flags may follow the positionals
-		if err := fs.Parse(pos[2:]); err != nil || fs.NArg() > 0 {
-			return errors.New(usage)
-		}
+	if len(pos) == 0 {
+		return errors.New(usage)
 	}
-	if len(pos) < 2 {
+	rest := pos[1:]
+	code, haveCode := "", false
+	if len(rest) > 0 && (rest[0] == "-" || !strings.HasPrefix(rest[0], "-")) {
+		code, haveCode, rest = rest[0], true, rest[1:] // argv form: visible in the process list and shell history
+	}
+	if err := fs.Parse(rest); err != nil || fs.NArg() > 0 { // flags may follow the positionals
 		return errors.New(usage)
 	}
 	hubURL, err := ParseHubURL(pos[0])
 	if err != nil {
 		return err
 	}
-	b, err := DecodeBundle(pos[1])
+	if !haveCode || code == "-" {
+		if code, err = e.readInviteCode(); err != nil {
+			return err
+		}
+	}
+	b, err := DecodeBundle(code)
 	if err != nil {
 		return err
 	}
 	for kind, tok := range map[string]string{"session": b.SessionToken, "host": b.HostToken} {
-		if err := verifyToken(ctx, hubURL, tok); err != nil {
+		if err := verifyKind(ctx, hubURL, tok, kind); err != nil {
 			return fmt.Errorf("%s token check failed: %w", kind, err)
 		}
 	}

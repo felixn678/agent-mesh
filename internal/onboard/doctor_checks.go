@@ -23,10 +23,10 @@ func hubReachable(ctx context.Context, url, src string) Result {
 
 func authResult(ctx context.Context, tokenFile, url, tok string) Result {
 	name := "auth " + strings.TrimSuffix(tokenFile, ".token")
-	if err := verifyToken(ctx, url, tok); err != nil {
+	if err := verifyKind(ctx, url, tok, strings.TrimSuffix(tokenFile, ".token")); err != nil {
 		return Result{name, Fail, err.Error(), "agent-mesh invite <host> on the hub, then agent-mesh join again; on the hub, SIGHUP reloads hub.toml"}
 	}
-	return Result{name, Pass, "accepted by hub", ""}
+	return Result{name, Pass, "accepted by hub as " + strings.TrimSuffix(tokenFile, ".token") + " token", ""}
 }
 
 // toolChecks verifies the CLIs workers and sessions need.

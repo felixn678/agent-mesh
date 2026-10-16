@@ -50,6 +50,10 @@ func Up(ctx context.Context, e *Env, args []string) error {
 		return err
 	}
 	e.printf("config: %s (0700)\n", e.ConfigDir)
+	if changed {
+		e.printf("hub URL is now %s (client.toml and daemon.toml updated).\n"+
+			"Re-run: agent-mesh setup-claude   (Claude Code's MCP entry still points at the old URL)\n", hubURL)
+	}
 	if !*noService {
 		if err := startServices(ctx, e, changed); err != nil {
 			return err
