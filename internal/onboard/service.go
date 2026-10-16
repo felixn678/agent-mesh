@@ -3,6 +3,7 @@ package onboard
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 )
 
 // Unit describes a per-user background service running `agent-mesh <Args>`.
@@ -46,3 +47,15 @@ func (m unsupportedManager) Install(context.Context, Unit) error           { ret
 func (m unsupportedManager) Restart(context.Context, string) error         { return m.err() }
 func (m unsupportedManager) Reload(context.Context, string) error          { return m.err() }
 func (m unsupportedManager) Running(context.Context, string) (bool, error) { return false, m.err() }
+
+// UnitPath is the file that defines the named service ("hub" or "daemon")
+// on e.GOOS, whether or not it exists; "" where services are unsupported.
+func UnitPath(e *Env, name string) string {
+	switch e.GOOS {
+	case "linux":
+		return filepath.Join(e.Home, ".config", "systemd", "user", "agent-mesh-"+name+".service")
+	case "darwin":
+		return filepath.Join(e.Home, "Library", "LaunchAgents", "com.agentmesh."+name+".plist")
+	}
+	return ""
+}

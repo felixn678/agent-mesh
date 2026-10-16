@@ -13,6 +13,7 @@ import (
 	"github.com/felixn678/agent-mesh/internal/daemon"
 	"github.com/felixn678/agent-mesh/internal/hub"
 	"github.com/felixn678/agent-mesh/internal/report"
+	"github.com/felixn678/agent-mesh/internal/update"
 	"github.com/felixn678/agent-mesh/internal/version"
 )
 
@@ -33,6 +34,7 @@ commands:
   setup-claude  opt-in install of the agentmesh MCP server and hooks for Claude Code
   report   print the morning report
   token    generate tokens (token new --admin | --host <name> | --session <name> --out <file>)
+  update   update this machine to the latest release (--check, --version vX.Y.Z, --no-restart)
   version  print the version
 `
 
@@ -40,6 +42,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, os.Args[1:]); err != nil {
+		var exit update.ExitError
+		if errors.As(err, &exit) {
+			os.Exit(exit.Code)
+		}
 		fmt.Fprintln(os.Stderr, "agent-mesh:", err)
 		os.Exit(1)
 	}
@@ -66,6 +72,8 @@ func run(ctx context.Context, args []string) error {
 		return report.Run(ctx, rest)
 	case "token":
 		return runToken(os.Stdout, rest)
+	case "update":
+		return runUpdate(ctx, rest)
 	case "version", "--version":
 		fmt.Println(version.Version)
 		return nil

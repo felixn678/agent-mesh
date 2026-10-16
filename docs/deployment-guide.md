@@ -154,6 +154,17 @@ umask 077; sqlite3 ~/.local/share/agent-mesh/hub.db ".backup <backup-path>"
 
 Restore: stop the hub, replace `hub.db` (delete `hub.db-wal` and `hub.db-shm`), start the hub. Tasks restored in `running` state belong to leases that may no longer exist: cancel them (`agent-mesh task cancel <id>`) and requeue the ones you still want (`agent-mesh task requeue <id>`).
 
+## Updating
+
+`agent-mesh update [--version vX.Y.Z] [--check] [--no-restart]` on each machine, hub machine first.
+
+- Source: `https://github.com/felixn678/agent-mesh/releases/latest/download/<asset>` (or `/releases/download/<tag>/` with `--version`), asset `agent-mesh-<os>-<arch>.tar.gz` plus `SHA256SUMS`, HTTPS only. `AGENTMESH_DOWNLOAD_BASE` points at a mirror directory instead (http:// and file:// allowed there), as for the installer.
+- The archive must match `SHA256SUMS`; the unpacked binary must be built for this OS/CPU and report a release version. It is staged next to the installed binary, then renamed over it (atomic; running processes keep the old file).
+- `--check` prints current and latest and changes nothing: exit 0 when up to date (or newer), 10 when an update is available, 1 on errors.
+- Same version: "already up to date". A latest release older than the running binary is not installed unless named with `--version` (the rollback path).
+- Development builds (`dev` or a Go pseudo-version) need `--version`. Binaries under `$GOBIN`, `$GOPATH/bin` (default `~/go/bin`) or the Go build cache are left alone; `update` prints `go install github.com/felixn678/agent-mesh/cmd/agent-mesh@<tag>`. A binary in a directory you cannot write gets the installer command instead (installs to `~/.local/bin`).
+- Afterwards the installed services whose unit runs this binary are restarted, hub then daemon (`systemctl --user restart` / `launchctl kickstart -k`); the daemon releases its leases on stop. Units that run another binary path are reported, not restarted. Hooks and the MCP server exec the binary per call and need nothing.
+
 ## Rollback
 
 ```sh

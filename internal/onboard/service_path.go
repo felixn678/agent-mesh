@@ -50,14 +50,13 @@ var (
 // installedServicePath returns the PATH of the installed daemon unit, or ""
 // when it is not installed (or has no PATH).
 func (e *Env) installedServicePath() string {
+	b, err := os.ReadFile(UnitPath(e, "daemon"))
 	switch e.GOOS {
 	case "linux":
-		b, err := os.ReadFile(filepath.Join(e.Home, ".config", "systemd", "user", "agent-mesh-daemon.service"))
 		if m := systemdPathRE.FindSubmatch(b); err == nil && m != nil {
 			return strings.ReplaceAll(strings.ReplaceAll(string(m[1]), "%%", "%"), `\\`, `\`)
 		}
 	case "darwin":
-		b, err := os.ReadFile(filepath.Join(e.Home, "Library", "LaunchAgents", "com.agentmesh.daemon.plist"))
 		if m := plistPathRE.FindSubmatch(b); err == nil && m != nil {
 			return string(m[1])
 		}
