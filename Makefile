@@ -4,7 +4,7 @@ LDFLAGS  := -s -w -X $(MODULE)/internal/version.Version=$(VERSION)
 GOBIN    := $(shell go env GOPATH)/bin
 GITLEAKS := $(or $(shell command -v gitleaks 2>/dev/null),$(wildcard $(GOBIN)/gitleaks))
 
-.PHONY: build test vet cross lint-secrets clean
+.PHONY: build test vet cross release lint-secrets clean
 
 build:
 	@mkdir -p bin
@@ -16,12 +16,17 @@ vet:
 test: vet
 	go test -race ./...
 
-# Release binaries, one per supported platform.
+# Raw binaries per platform (deploy/install.sh picks dist/agent-mesh-<os>-<arch>).
 cross:
 	@mkdir -p dist
 	CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/agent-mesh-linux-amd64  ./cmd/agent-mesh
+	CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/agent-mesh-linux-arm64  ./cmd/agent-mesh
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/agent-mesh-darwin-arm64 ./cmd/agent-mesh
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/agent-mesh-darwin-amd64 ./cmd/agent-mesh
+
+# Release archives + SHA256SUMS exactly as the release workflow publishes them.
+release:
+	scripts/build-release.sh $(VERSION) dist/release
 
 lint-secrets:
 	@if [ -z "$(GITLEAKS)" ]; then echo "gitleaks not found (install: go install github.com/zricethezav/gitleaks/v8@latest)"; exit 1; fi

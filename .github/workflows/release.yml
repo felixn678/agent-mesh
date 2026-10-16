@@ -1,0 +1,30 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+      - name: Build release archives
+        run: scripts/build-release.sh "$GITHUB_REF_NAME" dist
+      - name: Check stamped version
+        run: |
+          tar -xzOf dist/agent-mesh-linux-amd64.tar.gz agent-mesh > /tmp/agent-mesh
+          chmod +x /tmp/agent-mesh
+          test "$(/tmp/agent-mesh version)" = "$GITHUB_REF_NAME"
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
