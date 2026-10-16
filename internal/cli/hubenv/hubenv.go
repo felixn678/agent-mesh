@@ -27,18 +27,18 @@ const (
 	SessionTokenFile = "session.token"
 )
 
-// HubURL resolves the hub base URL via config.HubURL (one resolver shared
-// with report and doctor).
+// HubURL resolves the hub base URL against the default config dir.
 func HubURL() string {
-	dir, err := config.DefaultDir()
-	if err != nil {
-		if u := os.Getenv("AGENTMESH_URL"); u != "" {
-			return u
-		}
-		return config.DefaultHubURL
-	}
-	u, _ := config.HubURL(dir)
+	dir, _ := config.DefaultDir() // "" only makes the file lookups miss
+	u, _ := HubURLIn(dir)
 	return u
+}
+
+// HubURLIn resolves the hub URL with configDir as the config dir and says
+// where it came from; it delegates to config.HubURL so the CLI, report and
+// doctor share one resolver.
+func HubURLIn(configDir string) (url, source string) {
+	return config.HubURL(configDir)
 }
 
 // File returns <config-dir>/name.

@@ -18,6 +18,9 @@ func HubURL(dir string) (url, source string) {
 		return u, "$AGENTMESH_URL"
 	}
 	for _, n := range []string{"client.toml", "daemon.toml"} {
+		if dir == "" { // never fall back to files in the current directory
+			break
+		}
 		if u := readHubURL(filepath.Join(dir, n)); u != "" {
 			return u, n
 		}
