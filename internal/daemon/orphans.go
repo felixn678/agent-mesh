@@ -39,8 +39,12 @@ func (d *Daemon) sweepOrphans(ctx context.Context) {
 			continue
 		}
 		t := api.ClaimedTask{ID: rec.ID, Fence: rec.Fence, Repo: rec.Repo}
-		d.release(ctx, t, "daemon restart")
-		d.removeWorktree(ctx, rec.Repo, n.worktree, n.branch)
+		// Only a task we actually handed back loses its worktree. If the hub
+		// refused (the attempt already ended, e.g. stuck with the worktree
+		// kept for a human) or is unreachable, leave it for gc.
+		if d.release(ctx, t, "daemon restart") == nil {
+			d.removeWorktree(ctx, rec.Repo, n.worktree, n.branch)
+		}
 		_ = os.Remove(path)
 		_ = os.Remove(n.prompt)
 	}

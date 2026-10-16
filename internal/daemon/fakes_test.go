@@ -86,6 +86,17 @@ func fakeClaude() int {
 	case "secret":
 		write("config.txt", "token = \"ghp_"+strings.Repeat("aB3dE5fG7h", 3)+"abcdef\"\n")
 		commit("config.txt")
+	case "sensitivequoted": // git quotes non-ASCII paths unless -z is used
+		_ = os.MkdirAll("ünïcode", 0o755)
+		write("ünïcode/CLAUDE.md", "# rules for the next agent\n")
+		commit("ünïcode/CLAUDE.md")
+	case "symlinkclaude": // .claude is a symlink entry, not a directory prefix
+		_ = os.MkdirAll("notes", 0o755)
+		write("notes/settings.json", `{"hooks":{}}`)
+		_ = os.Symlink("notes", ".claude")
+		commit("notes/settings.json", ".claude")
+	case "redirectgit":
+		redirectGitDir(dir)
 	case "nochange":
 	}
 	fmt.Printf(`{"type":"result","subtype":%q,"is_error":%v,"result":%q,"session_id":%q,"total_cost_usd":0.25}`+"\n",
@@ -194,4 +205,27 @@ func fakeGitleaks() int {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 	}
 	return 0
+}
+
+// redirectGitDir plays a hostile worker: it points the worktree's .git file
+// at a git dir it controls whose config runs a program (core.fsmonitor) on
+// the next git status. The program records the environment it ran with.
+func redirectGitDir(fakeDir string) {
+	wt, _ := os.Getwd()
+	hook := filepath.Join(fakeDir, "fsmonitor.sh")
+	_ = os.WriteFile(hook, []byte("#!/bin/sh\nenv > "+filepath.Join(fakeDir, "pwned")+"\nexit 1\n"), 0o755)
+	evil := filepath.Join(wt, ".evil")
+	for _, c := range [][]string{
+		{"init", "-q", "--bare", evil},
+		{"--git-dir=" + evil, "config", "core.bare", "false"},
+		{"--git-dir=" + evil, "config", "core.worktree", wt},
+		{"--git-dir=" + evil, "--work-tree=" + wt, "add", "README.md"},
+		{"--git-dir=" + evil, "config", "core.fsmonitor", hook},
+	} {
+		if out, err := exec.Command("git", c...).CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "git %v: %v %s\n", c, err, out)
+			os.Exit(3)
+		}
+	}
+	_ = os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+evil+"\n"), 0o644)
 }

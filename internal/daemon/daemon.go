@@ -150,7 +150,9 @@ func detached() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 15*time.Second)
 }
 
-func (d *Daemon) release(ctx context.Context, t api.ClaimedTask, reason string) {
+// release hands the task back; the error says it did not land (lease
+// already gone, or the hub unreachable until ctx ended).
+func (d *Daemon) release(ctx context.Context, t api.ClaimedTask, reason string) error {
 	err := d.report(ctx, "release", func(ctx context.Context) error {
 		_, err := d.hub.Release(ctx, t.ID, api.ReleaseRequest{Fence: t.Fence, Reason: short(reason)})
 		return err
@@ -158,6 +160,7 @@ func (d *Daemon) release(ctx context.Context, t api.ClaimedTask, reason string) 
 	if err != nil {
 		d.log.Warn("release not recorded", "task", t.ID, "err", err)
 	}
+	return err
 }
 
 // fail reports a failed attempt. It returns an error only when the report

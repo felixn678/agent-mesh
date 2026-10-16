@@ -79,6 +79,8 @@ func TestPublishRefusalsLeaveTaskStuckWithWorktree(t *testing.T) {
 	cases := []struct{ prompt, reason string }{
 		{"untracked", "untracked files left: stray.txt"},
 		{"sensitive", "sensitive path: .mcp.json"},
+		{"sensitivequoted", "sensitive path: ünïcode/CLAUDE.md"},
+		{"symlinkclaude", "sensitive path: .claude"},
 		{"secret", "secret scan hit"},
 		{"error", "error_max_budget_usd"},
 	}

@@ -18,8 +18,43 @@ func (d *Daemon) git(ctx context.Context, dir string, args ...string) (string, e
 }
 
 func (d *Daemon) gitT(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
-	full := append([]string{"-c", "core.hooksPath=/dev/null"}, args...)
-	return runCmd(ctx, timeout, dir, d.gitEnv, nil, "git", full...)
+	return runCmd(ctx, timeout, dir, d.gitEnv, nil, "git", gitArgs(args)...)
+}
+
+// gitArgs prefixes every daemon git call with settings that keep repository
+// content from running programs: no hooks, no fsmonitor.
+func gitArgs(args []string) []string {
+	return append([]string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}, args...)
+}
+
+// worktreeEnv is the git/gh env for commands run inside a task worktree. It
+// pins GIT_DIR to the worktree's admin dir in the daemon's clone, so a worker
+// that rewrites <wt>/.git cannot point the daemon's git, gh or gitleaks (all
+// holding GitHub credentials) at a git dir and config it controls. The admin
+// dir must point back at this worktree.
+func (d *Daemon) worktreeEnv(repo, wt string) ([]string, error) {
+	admin := filepath.Join(d.clonePath(repo), "worktrees", filepath.Base(wt))
+	b, err := os.ReadFile(filepath.Join(admin, "gitdir"))
+	if err != nil || !samePath(strings.TrimSpace(string(b)), filepath.Join(wt, ".git")) {
+		return nil, fmt.Errorf("worktree %s is not registered in the daemon clone", filepath.Base(wt))
+	}
+	return append(append([]string{}, d.gitEnv...), "GIT_DIR="+admin, "GIT_WORK_TREE="+wt), nil
+}
+
+// samePath compares paths after resolving symlinks (macOS temp dirs).
+func samePath(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(filepath.Dir(a))
+	rb, errB := filepath.EvalSymlinks(filepath.Dir(b))
+	return errA == nil && errB == nil && filepath.Join(ra, filepath.Base(a)) == filepath.Join(rb, filepath.Base(b))
+}
+
+// wtGit runs git inside a task worktree with worktreeEnv.
+func (d *Daemon) wtGit(ctx context.Context, repo, wt string, args ...string) (string, error) {
+	env, err := d.worktreeEnv(repo, wt)
+	if err != nil {
+		return "", err
+	}
+	return runCmd(ctx, d.cfg.GitCallTimeout, wt, env, nil, "git", gitArgs(args)...)
 }
 
 // repoLock serializes all ref-changing operations on one daemon clone.
@@ -84,8 +119,8 @@ func (d *Daemon) fetchBase(ctx context.Context, clone, base string) error {
 }
 
 // remoteBranchSHA returns the sha of refs/heads/<branch> on origin ("" if absent).
-func (d *Daemon) remoteBranchSHA(ctx context.Context, dir, branch string) (string, error) {
-	out, err := d.git(ctx, dir, "ls-remote", "--end-of-options", "origin", "refs/heads/"+branch)
+func (d *Daemon) remoteBranchSHA(ctx context.Context, repo, wt, branch string) (string, error) {
+	out, err := d.wtGit(ctx, repo, wt, "ls-remote", "--end-of-options", "origin", "refs/heads/"+branch)
 	if err != nil {
 		return "", err
 	}

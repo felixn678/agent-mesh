@@ -141,11 +141,11 @@ func (d *Daemon) stepPush(ctx context.Context, j *journal) error {
 var errBranchCollision = errors.New("branch collision")
 
 func (d *Daemon) pushOnce(ctx context.Context, j *journal) error {
-	head, err := d.git(ctx, j.Worktree, "rev-parse", "--verify", "HEAD")
+	head, err := d.wtGit(ctx, j.Repo, j.Worktree, "rev-parse", "--verify", "HEAD")
 	if err != nil {
 		return err
 	}
-	remote, err := d.remoteBranchSHA(ctx, j.Worktree, j.Branch)
+	remote, err := d.remoteBranchSHA(ctx, j.Repo, j.Worktree, j.Branch)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func (d *Daemon) pushOnce(ctx context.Context, j *journal) error {
 		return errBranchCollision
 	}
 	ref := "refs/heads/" + j.Branch
-	_, err = d.git(ctx, j.Worktree, "push", "--quiet", "--no-verify", "--force-with-lease="+ref+":",
+	_, err = d.wtGit(ctx, j.Repo, j.Worktree, "push", "--quiet", "--no-verify", "--force-with-lease="+ref+":",
 		"--end-of-options", "origin", "HEAD:"+ref)
 	var ce *cmdError
 	if errors.As(err, &ce) && (strings.Contains(ce.Stderr, "stale info") || strings.Contains(ce.Stderr, "already exists")) {

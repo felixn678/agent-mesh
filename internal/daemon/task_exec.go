@@ -43,7 +43,7 @@ func (d *Daemon) execTask(ctx context.Context, t api.ClaimedTask, n taskNames) {
 		rctx, cancel := detached()
 		defer cancel()
 		d.removeWorktree(rctx, t.Repo, n.worktree, n.branch)
-		d.release(rctx, t, "setup: "+err.Error())
+		_ = d.release(rctx, t, "setup: "+err.Error())
 		return
 	}
 	log.Info("claude starting", "worktree", n.worktree)
@@ -63,7 +63,7 @@ func (d *Daemon) execTask(ctx context.Context, t api.ClaimedTask, n taskNames) {
 		rctx, cancel := detached()
 		defer cancel()
 		cleanup(rctx, true)
-		d.release(rctx, t, "daemon shutdown")
+		_ = d.release(rctx, t, "daemon shutdown")
 	case outTimeout:
 		if d.fail(ctx, t.ID, t.Fence, false, "timeout", res.CostUSD, n.worktree, res.SessionID) == nil {
 			cleanup(ctx, false)

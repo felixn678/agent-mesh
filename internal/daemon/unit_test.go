@@ -152,6 +152,7 @@ func TestClaudeArgsIsolation(t *testing.T) {
 		"--max-budget-usd\n0.5", "--tools\nRead\nBash\n--allowedTools\nRead\nBash(go test *)\n--disallowedTools",
 		"Bash(git push*)", "Bash(gh *)", "Bash(curl *)", "Bash(wget *)", "WebFetch",
 		"Read(~/.ssh/**)", "Read(~/.config/**)", "Read(~/.claude/**)",
+		"Edit(~/.gitconfig)", "Edit(~/.bashrc)", "Edit(~/.zshrc)", "Edit(~/.local/bin/**)", "Read(~/.git-credentials)",
 		"Read(//" + strings.TrimPrefix(c.StateDir, "/") + "/spool/**)"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("argv missing %q", want)
@@ -209,6 +210,12 @@ func TestSensitivePaths(t *testing.T) {
 		".claude/settings.json": true, "sub/.claude/hooks.json": true, ".mcp.json": true, "CLAUDE.md": true,
 		"docs/CLAUDE.md": true, ".github/workflows/ci.yml": true, ".gitleaks.toml": true, ".gitleaksignore": true,
 		"README.md": false, "claude.go": false, ".github/CODEOWNERS": false, "x/.mcp.json.bak": false,
+		// Case-insensitive filesystems load these as .claude / CLAUDE.md.
+		".Claude/settings.json": true, "docs/claude.md": true, "Docs/Claude.Local.MD": true, ".MCP.json": true,
+		// A symlink named .claude or .github is a file entry, not a directory prefix.
+		".claude": true, "tools/.claude": true, ".github": true, ".github/workflows": true,
+		".github/actions/setup/action.yml": true, "x/.github/workflows/ci.yml": false,
+		"sub/.mcp.json": false, "has space/CLAUDE.md": true, "ünïcode/CLAUDE.md": true,
 	} {
 		if sensitive(p) != want {
 			t.Errorf("sensitive(%q) = %v", p, !want)
@@ -222,7 +229,8 @@ func TestEnvFilesAndWorkerEnv(t *testing.T) {
 	if err := os.WriteFile(gh, []byte("# pat\nexport GH_TOKEN=\"tok\"\n\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	claudeEnv, gitEnv, err := buildEnvs([]string{"PATH=/bin", "GITHUB_TOKEN=x", "AGENTMESH_TOKEN=y", "AGENTMESH_HOOKS=on"}, "", gh)
+	claudeEnv, gitEnv, err := buildEnvs([]string{"PATH=/bin", "GITHUB_TOKEN=x", "AGENTMESH_TOKEN=y", "AGENTMESH_HOOKS=on",
+		"AGENTMESH_SESSION_TOKEN=s", "AGENTMESH_URL=http://hub"}, "", gh)
 	if err != nil {
 		t.Fatal(err)
 	}

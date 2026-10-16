@@ -45,7 +45,7 @@ func (d *Daemon) stepComplete(ctx context.Context, j *journal) error {
 func (d *Daemon) stepClosePR(ctx context.Context, j *journal) error {
 	delay := d.retryBase
 	for {
-		err := d.closePR(ctx, j.Worktree, j.PRURL, "Superseded by a newer attempt; this attempt lost its lease.")
+		err := d.closePR(ctx, j, j.PRURL, "Superseded by a newer attempt; this attempt lost its lease.")
 		if err == nil {
 			return d.endJournal(ctx, j, true)
 		}
@@ -71,9 +71,12 @@ func (d *Daemon) finishPublish(ctx context.Context, j *journal, removeWT bool) {
 	if removeWT {
 		d.removeWorktree(ctx, j.Repo, j.Worktree, j.Branch)
 	}
+	// Run record first: a crash in between leaves only the journal, whose
+	// replay repeats an idempotent last step; a lone run record would make
+	// the orphan sweep treat the finished task as abandoned.
 	n := d.names(j.ID, j.Fence)
-	_ = os.Remove(n.journal)
 	_ = os.Remove(n.runRec)
+	_ = os.Remove(n.journal)
 }
 
 func joinNote(a, b string) string {

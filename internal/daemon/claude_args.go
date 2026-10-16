@@ -17,7 +17,13 @@ func denyFloor(stateDir string) []string {
 	floor := []string{
 		"Bash(git push*)", "Bash(gh *)", "Bash(curl *)", "Bash(wget *)", "WebFetch", "WebSearch",
 	}
-	private := []string{"~/.ssh/**", "~/.config/**", "~/.claude/**", "~/.claude.json"}
+	// Credentials, the agent's own config, and files that run code later as
+	// this user (shell rc files, git config the daemon's own git reads, user
+	// binaries, launch agents).
+	private := []string{"~/.ssh/**", "~/.config/**", "~/.claude/**", "~/.claude.json",
+		"~/.gitconfig", "~/.git-credentials", "~/.netrc", "~/.aws/**", "~/.gnupg/**",
+		"~/.bashrc", "~/.bash_profile", "~/.profile", "~/.zshrc", "~/.zprofile", "~/.zshenv",
+		"~/.local/bin/**", "~/Library/LaunchAgents/**"}
 	for _, sub := range []string{"repos", "spool", "run", "logs"} {
 		private = append(private, "//"+strings.TrimPrefix(filepath.Join(stateDir, sub), "/")+"/**")
 	}
