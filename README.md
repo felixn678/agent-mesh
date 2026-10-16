@@ -104,7 +104,8 @@ CLI commands resolve the hub URL as `$AGENTMESH_URL`, else `hub_url` in `client.
 agent-mesh task add --repo <repo> --prompt "fix the flaky test" --budget 2 [--host <host-name>]
 agent-mesh task add --repo <repo> --budget 2 --prompt-file - < spec.md   # prompt from stdin
 agent-mesh task list [--state queued] [--since 16h]
-agent-mesh task get|cancel|requeue <id>
+agent-mesh task get <id>
+agent-mesh task cancel|requeue <id>      # hub machine only (admin token)
 agent-mesh hosts [--verbose]
 agent-mesh report [--since 16h] [--out <file>]
 agent-mesh task -h                       # each subcommand also takes -h
@@ -161,6 +162,11 @@ Non-goals: no remote exec, no SSH in code, no TLS or mDNS code, no tmux, no hub 
 - Services dead after reboot (Linux): check `loginctl show-user "$USER" | grep Linger` and the network autoconnect setting.
 - Hub bind fails: another process holds the port, or the Tailscale address is not up yet (the hub retries for 2 minutes).
 - Hook silent: expected when the hub is unreachable; check `agent-mesh doctor`.
+- `agent-mesh hosts` says `no hosts` although machines have joined: `hosts` lists machines whose **daemon** has reported load. Interactive sessions do not appear there; ask a session to "list agentmesh sessions" instead. Start the daemon (service, or `agent-mesh daemon`) if you want the machine listed.
+- `task cancel` / `task requeue` → `403 forbidden`: these need the admin token, which exists only on the hub machine. Run them there.
+- `task add` → `max_budget_usd must be > 0 and <= 100`: `--budget <usd>` is required (for example `--budget 2`).
+- `doctor` warns `service hub: not running` while the hub works: you started it by hand (`up --no-service` + `agent-mesh hub`); the warning is about the service only. `hub reachable` is what matters.
+- Hooks do nothing after moving the binary: hooks and services store its absolute path. Re-run `agent-mesh setup-claude` (and `up`/`join` for services). Keep the binary in a directory without spaces.
 
 ## Development
 

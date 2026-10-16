@@ -89,7 +89,7 @@ Units use `Restart=on-failure`, `RestartSec=10`, `StartLimitIntervalSec=0` so a 
 1. Install Tailscale on both hosts, same tailnet; note the hub's tailnet IP or MagicDNS name.
 2. Hub: `agent-mesh up --listen <tailnet-ip>:8787` (or set `listen` in `hub.toml` and restart the hub). The hub's own `daemon.toml` / `client.toml` `hub_url` must point to the same address. The hub retries bind, so tailscaled start order is fine.
 3. Optional firewall: `sudo ufw allow in on tailscale0 to any port 8787 proto tcp` (run by you, not by the scripts).
-4. Mac, fast path: `agent-mesh join <hub-url> <bundle>` from the hub's `invite`. Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:8787"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
+4. Mac, fast path: `agent-mesh join <hub-url>`, then paste the code from the hub's `invite`. Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:8787"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
 5. On each host, `agent-mesh setup-claude`, then test a message in both directions.
 
 ## Claude integration check
