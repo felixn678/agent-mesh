@@ -16,9 +16,6 @@ import (
 	"github.com/felixn678/agent-mesh/internal/config"
 )
 
-// defaultHubURL is the v1 loopback hub.
-const defaultHubURL = "http://127.0.0.1:8787"
-
 // Run is the `agent-mesh report` entry point (args exclude the subcommand).
 func Run(ctx context.Context, args []string) error { return run(ctx, args, os.Stdout) }
 
@@ -32,11 +29,12 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	if fs.NArg() > 0 || *since <= 0 {
 		return errors.New("usage: agent-mesh report [--since 16h] [--out path]")
 	}
-	url := os.Getenv("AGENTMESH_URL")
-	if url == "" {
-		url = defaultHubURL
+	dir, err := config.DefaultDir()
+	if err != nil {
+		return err
 	}
-	tok, err := adminToken()
+	url, _ := config.HubURL(dir)
+	tok, err := readToken(dir)
 	if err != nil {
 		return err
 	}
@@ -55,16 +53,20 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	return err
 }
 
-// adminToken reads $AGENTMESH_TOKEN, else <config-dir>/admin.token.
-func adminToken() (string, error) {
+// readToken returns $AGENTMESH_TOKEN, else the first token file present in
+// dir: admin.token on the hub machine, session.token or host.token on joined
+// machines (every token kind may read the report).
+func readToken(dir string) (string, error) {
 	if tok := strings.TrimSpace(os.Getenv("AGENTMESH_TOKEN")); tok != "" {
 		return tok, nil
 	}
-	dir, err := config.DefaultDir()
-	if err != nil {
-		return "", err
+	for _, name := range []string{"admin.token", "session.token", "host.token"} {
+		path := filepath.Join(dir, name)
+		if _, err := os.Stat(path); err == nil {
+			return config.ReadToken(path)
+		}
 	}
-	return config.ReadToken(filepath.Join(dir, "admin.token"))
+	return "", errors.New("no token: set AGENTMESH_TOKEN or run agent-mesh up/join (looked in " + dir + ")")
 }
 
 // writeOutside writes the report to path with mode 0600 (parents 0700). The

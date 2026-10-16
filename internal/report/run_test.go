@@ -92,3 +92,24 @@ func TestOutWritesPrivateFile(t *testing.T) {
 		t.Fatalf("parent mode %v %v", fi.Mode().Perm(), err)
 	}
 }
+
+// On a joined machine there is no admin token and the hub URL lives in
+// client.toml; the report must still work from the session token.
+func TestRunOnJoinedMachineUsesClientTOMLAndSessionToken(t *testing.T) {
+	h := hubWithQueuedTask(t)
+	t.Setenv("AGENTMESH_URL", "")
+	t.Setenv("AGENTMESH_TOKEN", "")
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	dir := filepath.Join(cfgHome, "agent-mesh")
+	if err := config.WriteToken(filepath.Join(dir, "session.token"), h.SessionToken("host-b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "client.toml"), []byte("hub_url = \""+h.URL+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := report.RunTo(bg, nil, &out); err != nil || !strings.Contains(out.String(), "## Queued (1)") {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+}
