@@ -105,6 +105,6 @@ cat <<EOF
 
 Next steps:
   hub machine:     agent-mesh up
-  other machines:  agent-mesh join <hub-url> <bundle>   (run "agent-mesh invite <name>" on the hub)
+  other machines:  agent-mesh join <hub-url>   then paste the code printed by "agent-mesh invite <name>" on the hub
   then, on each:   agent-mesh setup-claude && agent-mesh doctor
 EOF
