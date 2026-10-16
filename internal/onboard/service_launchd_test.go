@@ -178,50 +178,89 @@ func TestLaunchdInstallWithoutGUIDomainExplains(t *testing.T) {
 	}
 }
 
-// The rendered plist must be well-formed XML with the keys launchd needs,
-// and must escape XML metacharacters in paths and arguments.
-func TestRenderPlistIsValidXML(t *testing.T) {
-	home := "/Users/a&b"
-	p := renderPlist(home, home+"/.local/bin/agent-mesh", home+"/.local/bin:/opt/homebrew/bin:/usr/bin",
-		Unit{Name: "hub", Args: []string{"hub", "--note=<x>"}}, "com.agentmesh.hub")
+// plistDoc is the subset of a launchd plist the tests inspect.
+type plistDoc struct {
+	strs map[string]string // top-level <key> -> <string> value
+	args []string          // ProgramArguments
+	env  map[string]string // EnvironmentVariables
+	keys []string          // every <key>, in order
+}
+
+// parsePlist decodes the flat plist renderPlist emits (strict XML), pairing
+// each top-level key with its string value and collecting the argv array and
+// the environment dict.
+func parsePlist(t *testing.T, p string) plistDoc {
+	t.Helper()
 	dec := xml.NewDecoder(strings.NewReader(p))
 	dec.Strict = true
-	var keys, strs []string
-	var cur *[]string
+	doc := plistDoc{strs: map[string]string{}, env: map[string]string{}}
+	var key, envKey, elem string
+	depth := 0 // nesting below the top-level <dict>
 	for {
 		tok, err := dec.Token()
 		if err == io.EOF {
-			break
+			return doc
 		}
 		if err != nil {
 			t.Fatalf("invalid XML: %v\n%s", err, p)
 		}
 		switch v := tok.(type) {
 		case xml.StartElement:
-			cur = nil
-			switch v.Name.Local {
-			case "key":
-				cur = &keys
-			case "string":
-				cur = &strs
+			elem = v.Name.Local
+			if elem == "dict" || elem == "array" {
+				depth++
 			}
+		case xml.EndElement:
+			if v.Name.Local == "dict" || v.Name.Local == "array" {
+				depth--
+			}
+			elem = ""
 		case xml.CharData:
-			if cur != nil {
-				*cur = append(*cur, string(v))
-				cur = nil
+			text := string(v)
+			switch {
+			case elem == "key" && depth == 1:
+				key = text
+				doc.keys = append(doc.keys, text)
+			case elem == "key" && depth == 2:
+				envKey = text
+			case elem == "string" && depth == 1:
+				doc.strs[key] = text
+			case elem == "string" && depth == 2 && key == "ProgramArguments":
+				doc.args = append(doc.args, text)
+			case elem == "string" && depth == 2 && key == "EnvironmentVariables":
+				doc.env[envKey] = text
 			}
 		}
 	}
-	for _, k := range []string{"Label", "ProgramArguments", "EnvironmentVariables", "PATH", "RunAtLoad",
+}
+
+// The rendered plist must be well-formed XML with the keys launchd needs,
+// must escape XML metacharacters, must make the process write its own
+// rotating --log-file, and must send stdout/stderr to a separate file that
+// only collects startup failures.
+func TestRenderPlistIsValidXML(t *testing.T) {
+	home := "/Users/a&b"
+	bin := home + "/.local/bin/agent-mesh"
+	path := home + "/.local/bin:/opt/homebrew/bin:/usr/bin"
+	doc := parsePlist(t, renderPlist(home, bin, path, Unit{Name: "hub", Args: []string{"hub", "--note=<x>"}}, "com.agentmesh.hub"))
+	for _, k := range []string{"Label", "ProgramArguments", "EnvironmentVariables", "RunAtLoad",
 		"KeepAlive", "ThrottleInterval", "Umask", "StandardOutPath", "StandardErrorPath"} {
-		if !contains(keys, k) {
+		if !contains(doc.keys, k) {
 			t.Errorf("missing key %s", k)
 		}
 	}
-	for _, s := range []string{"com.agentmesh.hub", home + "/.local/bin/agent-mesh", "hub", "--note=<x>",
-		filepath.Join(home, "Library", "Logs", "agent-mesh", "hub.log")} {
-		if !contains(strs, s) {
-			t.Errorf("missing string %q in %v", s, strs)
+	logDir := filepath.Join(home, "Library", "Logs", "agent-mesh")
+	wantArgs := []string{bin, "hub", "--note=<x>", "--log-file", filepath.Join(logDir, "hub.log")}
+	if strings.Join(doc.args, "\x00") != strings.Join(wantArgs, "\x00") {
+		t.Errorf("ProgramArguments %q, want %q", doc.args, wantArgs)
+	}
+	if doc.strs["Label"] != "com.agentmesh.hub" || doc.env["PATH"] != path {
+		t.Errorf("label %q PATH %q", doc.strs["Label"], doc.env["PATH"])
+	}
+	stderrLog := filepath.Join(logDir, "hub.stderr.log")
+	for _, k := range []string{"StandardOutPath", "StandardErrorPath"} {
+		if doc.strs[k] != stderrLog {
+			t.Errorf("%s = %q, want %q (must not be the rotating --log-file)", k, doc.strs[k], stderrLog)
 		}
 	}
 }
