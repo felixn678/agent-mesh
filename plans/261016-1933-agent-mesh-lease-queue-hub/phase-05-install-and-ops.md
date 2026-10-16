@@ -15,7 +15,7 @@ Run unattended on Ubuntu (v1): cross-compiled binary, systemd user units (hub + 
 
 ## Constraints
 - Install touches only `~/.local/bin/agent-mesh`, `~/.config/agent-mesh/`, `~/.local/share/agent-mesh/`, `~/.config/systemd/user/agent-mesh-*`, `~/Library/LaunchAgents/com.agentmesh.daemon.plist` (Mac).
-- **Never** modifies `~/.claude/` (settings, hooks, skills, rules), `~/.claude.json`, or the user's working clones. No `claude mcp add`.
+- `install.sh` **never** modifies `~/.claude/`, `~/.claude.json`, or the user's working clones. User-scope Claude integration is a separate, opt-in, per-host manual step: `agent-mesh setup-claude` (phase 2; decision A, 2026-10-16) — additive hooks + user-scope MCP; never touches ClaudeKit skills/rules/existing hooks.
 
 ## Requirements
 - Build: `make build` → `bin/agent-mesh-linux-amd64`, `bin/agent-mesh-darwin-arm64` (`CGO_ENABLED=0`, `-ldflags "-X <module>/internal/version.Version=$(git describe --always)"`). `make test` = vet + `go test -race ./...`.
@@ -25,7 +25,7 @@ Run unattended on Ubuntu (v1): cross-compiled binary, systemd user units (hub + 
   - `agent-mesh token new --host <host-name> --out host.token` per host → hash into `[host_tokens]`. Copy to remote host manually.
   - `gh.env`: `GH_TOKEN=<fine-grained PAT>` (contents rw + pull requests rw, allowlisted repos only).
   - optional `claude.env`: `CLAUDE_CODE_OAUTH_TOKEN=…` from `claude setup-token`.
-- Admin token for interactive use: gitignored `.envrc` in the agent-mesh repo (direnv) or wrapper script — not shell-global.
+- Admin token for interactive use: gitignored `.envrc` in the agent-mesh repo (direnv) or wrapper script — not shell-global. Interactive sessions elsewhere use the host's own `host.token` (decision C) via `setup-claude`.
 - Ubuntu systemd **user** units + `loginctl enable-linger <user>`:
   - common: `[Unit] StartLimitIntervalSec=0`; `[Service] Restart=on-failure RestartSec=10 UMask=0077`.
   - `agent-mesh-hub.service`: `ExecStart=%h/.local/bin/agent-mesh hub`.
@@ -49,6 +49,7 @@ v1 Ubuntu (<hub-host>)                         later: Mac (phase 3b)
 3. Optional ufw: allow 8787 only on `tailscale0`.
 4. Mac: `agent-mesh-darwin-arm64` → `~/.local/bin`; daemon.toml (`hub_url = "http://<hub-tailnet-name>:8787"`, slots auto-derived, `max_slots` only if needed); `host.token`, `gh.env`; LaunchAgent plist (`KeepAlive`, `RunAtLoad`, `EnvironmentVariables.PATH` incl. `/opt/homebrew/bin`, logs `~/Library/Logs/agent-mesh/`); `launchctl bootstrap gui/$(id -u) …`.
 5. Verify go-sdk DNS-rebinding check accepts tailnet Host header (phase 2 risk).
+6. Mac: `agent-mesh setup-claude` (same as Ubuntu step 7); cross-host test: session on Mac ↔ session on Ubuntu, both directions.
 
 ## Related Code Files
 Create: `Makefile`, `deploy/systemd/agent-mesh-hub.service`, `deploy/systemd/agent-mesh-daemon.service`, `deploy/launchd/com.agentmesh.daemon.plist`, `deploy/config/hub.example.toml`, `deploy/config/daemon.ubuntu.example.toml`, `deploy/config/daemon.mac.example.toml`, `deploy/install.sh`, `README.md`, `docs/system-architecture.md`.
@@ -61,9 +62,10 @@ Modify: `.mcp.json` only if phase-2 step 1 chose the url fallback. No Go code (b
 4. `install.sh <hub|daemon>`: idempotent, copies binary/units, creates dirs 0700, never generates/copies secrets, never touches `~/.claude*`; prints manual steps (tokens, gh.env, enable-linger, wifi autoconnect).
 5. **Manual user step**: ensure the Ubuntu network connection autoconnects at boot (`nmcli connection modify <connection-name> connection.autoconnect yes`), needed for GitHub reachability.
 6. Ubuntu install → hub + daemon up → enqueue via MCP in agent-mesh repo → draft PR.
-7. **Reboot test**: reboot, no GUI login → both units active, preflight healthy, one task completes.
-8. Ubuntu overnight soak: 6–10 small tasks; kill daemon mid-task once; restart hub mid-task once; report shows reasons and all PRs.
-9. README + architecture doc; every documented command actually run.
+7. **Opt-in per host**: `sha256sum ~/.claude/settings.json ~/.claude.json` → `agent-mesh setup-claude --dry-run` (review diff) → `agent-mesh setup-claude` → restart Claude sessions → in `~/Code/<repo>` `/mcp` shows agentmesh; `sessions` lists itself; two local sessions exchange a message (turn end, next prompt, idle wake if spike passed). Uninstall check: `agent-mesh setup-claude --uninstall` → checksums equal the pre-setup values (claude may rewrite unrelated `~/.claude.json` fields; compare `mcpServers` + settings.json bytes).
+8. **Reboot test**: reboot, no GUI login → both units active, preflight healthy, one task completes.
+9. Ubuntu overnight soak: 6–10 small tasks; kill daemon mid-task once; restart hub mid-task once; report shows reasons and all PRs.
+10. README + architecture doc (incl. messaging security note: messages are untrusted data, recipients may run bypassPermissions, tokens = same user's hosts only; delivery modes + limitation); every documented command actually run.
 
 ## Success Criteria
 - [ ] Both binaries build `CGO_ENABLED=0`; `make test` green.
@@ -71,7 +73,8 @@ Modify: `.mcp.json` only if phase-2 step 1 chose the url fallback. No Go code (b
 - [ ] Soak: zero duplicate open PRs per task; every task done/stuck with reason; report < 1 s.
 - [ ] `git grep` for token values, PAT prefix, private IPs, real hostnames/usernames in repo → empty.
 - [ ] `ss -ltnp` shows hub on 127.0.0.1 (v1) or tailnet IP only.
-- [ ] `~/.claude/`, `~/.claude.json`, user working clones unchanged by install (checksum before/after).
+- [ ] `~/.claude/`, `~/.claude.json`, user working clones unchanged by `install.sh` (checksum before/after).
+- [ ] `setup-claude` → only agentmesh hook entries + `mcpServers.agentmesh` added (diff); `--uninstall` → settings.json byte-identical to pre-setup, `mcpServers.agentmesh` gone; ClaudeKit hooks still fire.
 
 ## Risk Assessment
 | Risk | L×I | Mitigation |
@@ -82,4 +85,5 @@ Modify: `.mcp.json` only if phase-2 step 1 chose the url fallback. No Go code (b
 | Infra details leak in public repo | M×M | placeholders; grep check in success criteria |
 | Ubuntu off → no hub | M×M | accepted v1; daemons back off; lease grace on return |
 | DB loss | L×H | WAL + synchronous=FULL; manual backup documented; timer deferred |
-| Rollback | — | `systemctl --user disable --now agent-mesh-hub agent-mesh-daemon`; `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`; remove binary; config/data dirs retained for inspection |
+| setup-claude breaks ClaudeKit hooks | L×H | dry-run diff, backup `settings.json.agentmesh-bak`, uninstall byte-identical test (phase 2) |
+| Rollback | — | `agent-mesh setup-claude --uninstall` per host (or restore `~/.claude/settings.json.agentmesh-bak` + `claude mcp remove -s user agentmesh`); `systemctl --user disable --now agent-mesh-hub agent-mesh-daemon`; `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`; remove binary; config/data dirs retained for inspection |

@@ -59,7 +59,7 @@ Deny floor always appended (not configurable): `Bash(git push*)`, `Bash(gh *)`, 
 - **Circuit breaker**: 2 consecutive infra failures (auth, git fetch/clone, worktree add, claude exit with no result line) → stop claiming, `unhealthy`, re-run preflight every 10 min; pass → resume.
 - Preflight (start + breaker): `git --version`, `claude --version`, `claude auth status`, `gh auth token >/dev/null` (with gh.env), `git ls-remote origin HEAD` per repo (with gh.env), `gitleaks version`. Any fail → unhealthy, no claims.
 - Base branch re-validated host-side (no `agentmesh/` prefix, ref-format); every git call uses `--end-of-options` before positionals.
-- Prompt via stdin. Claude env = os env **minus** `GH_TOKEN`, `GITHUB_TOKEN`, `AGENTMESH_TOKEN` + claude_env_file. git/gh env = os env + gh_env_file.
+- Prompt via stdin. Claude env = os env **minus** `GH_TOKEN`, `GITHUB_TOKEN`, `AGENTMESH_TOKEN` + claude_env_file **+ `AGENTMESH_HOOKS=off`** (user-scope agentmesh hooks/waiter from `setup-claude` no-op even if a host opts into user setting sources; 2026-10-16). git/gh env = os env + gh_env_file.
 - Hub down: claim backoff 5 s→5 min + jitter; heartbeat network errors logged, claude keeps running; only 409 acts.
 
 ### Verified CLI facts (claude 2.1.301, `claude --help`)
