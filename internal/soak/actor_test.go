@@ -63,6 +63,19 @@ func (a *actor) loop(ctx context.Context) {
 
 func (a *actor) addTask(ctx context.Context) {
 	spec := api.TaskSpec{Repo: a.repo, Prompt: "soak work from " + a.id, MaxBudgetUSD: 1, CreatedBySession: a.id}
+	if rand.Float64() < 0.1 { // daemon-only repo: no session can take it
+		spec.Repo = daemonRepo
+		_ = a.retry(ctx, "add", func() (err error) {
+			var task api.Task
+			if task, err = a.c.AddTask(ctx, spec); err == nil {
+				a.w.l.mu.Lock()
+				a.w.l.added[task.ID] = addRec{at: time.Now(), creator: a.id}
+				a.w.l.mu.Unlock()
+			}
+			return err
+		})
+		return
+	}
 	switch r := rand.IntN(3); r {
 	case 0: // untargeted
 	case 1:

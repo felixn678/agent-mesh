@@ -24,17 +24,21 @@ type result struct {
 	samples                        []sample
 	elapsed                        time.Duration
 	reloadOK                       bool
-	hubErrors                      []string
+	hubErrors, daemonErrors        []string
 	queuedWhy                      map[string]int
+	graces, prs, openPRs           int
+	prURL                          map[int64]string // done tasks published by daemons
+	kill                           killResult
+	integrity                      string
 }
 
 var noticeRE = regexp.MustCompile(`^\[agent-mesh\] task #(\d+) (\w+) `)
 
 type dbTask struct {
-	state, reason, targetSession, repo, targetHost string
-	fence                                          int64
-	attempts, maxAttempts                          int
-	leaseExp                                       sql.NullInt64
+	state, reason, targetSession, repo, targetHost, prURL string
+	fence                                                 int64
+	attempts, maxAttempts                                 int
+	leaseExp                                              sql.NullInt64
 }
 
 // checkInvariants compares the ledger with the hub database (hub stopped).
@@ -45,17 +49,20 @@ func checkInvariants(t *testing.T, w *world, dbPath string) *result {
 	}
 	defer db.Close()
 	l := w.l
-	r := &result{states: map[string]int{}, queuedWhy: map[string]int{}}
+	r := &result{states: map[string]int{}, queuedWhy: map[string]int{}, prURL: map[int64]string{}}
+	if err := db.QueryRow("PRAGMA integrity_check").Scan(&r.integrity); err != nil || r.integrity != "ok" {
+		t.Errorf("database integrity after crashes: %q %v", r.integrity, err)
+	}
 	tasks := map[int64]dbTask{}
 	rows, err := db.Query(`SELECT id, state, COALESCE(reason,''), COALESCE(target_session,''), repo,
-	  COALESCE(target_host,''), fence, attempts, max_attempts, lease_expires_at FROM tasks`)
+	  COALESCE(target_host,''), COALESCE(pr_url,''), fence, attempts, max_attempts, lease_expires_at FROM tasks`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for rows.Next() {
 		var id int64
 		var d dbTask
-		if err := rows.Scan(&id, &d.state, &d.reason, &d.targetSession, &d.repo, &d.targetHost,
+		if err := rows.Scan(&id, &d.state, &d.reason, &d.targetSession, &d.repo, &d.targetHost, &d.prURL,
 			&d.fence, &d.attempts, &d.maxAttempts, &d.leaseExp); err != nil {
 			t.Fatal(err)
 		}
@@ -81,6 +88,9 @@ func checkInvariants(t *testing.T, w *world, dbPath string) *result {
 		switch d.state {
 		case "done":
 			r.finished++
+			if d.prURL != "" {
+				r.prURL[id] = d.prURL
+			}
 		case "stuck":
 			r.finished++
 			if d.reason == "" {
@@ -98,6 +108,12 @@ func checkInvariants(t *testing.T, w *world, dbPath string) *result {
 				r.stranded++
 				t.Errorf("task %d queued at end although live session(s) could claim it (reason %q)", id, d.reason)
 			}
+		}
+	}
+	// Durability: a claim a client saw must survive any crash (synchronous=FULL).
+	for key, holder := range l.claims {
+		if d, ok := tasks[key[0]]; !ok || d.fence < key[1] {
+			t.Errorf("claim of task %d fence %d by %s lost: hub has fence %d", key[0], key[1], holder, d.fence)
 		}
 	}
 	for id, fences := range l.completes {
@@ -184,6 +200,9 @@ func eligibleTaker(d dbTask, w *world, alive map[string]*actor) bool {
 	if d.attempts >= d.maxAttempts {
 		return false
 	}
+	if d.repo == canonical(daemonRepo) {
+		return true // daemons serve it until the end of the drain
+	}
 	for _, a := range alive {
 		if canonical(a.repo) == d.repo && (d.targetHost == "" || d.targetHost == a.host) &&
 			(d.targetSession == "" || d.targetSession == a.id) {
@@ -196,6 +215,8 @@ func eligibleTaker(d dbTask, w *world, alive map[string]*actor) bool {
 // queuedCause explains why a task is still queued at the end.
 func queuedCause(d dbTask, alive map[string]*actor) string {
 	switch {
+	case d.repo == canonical(daemonRepo):
+		return "daemon_repo"
 	case d.attempts >= d.maxAttempts:
 		return "attempts_at_cap"
 	case d.targetSession != "" && alive[d.targetSession] == nil:
@@ -229,6 +250,13 @@ func (r *result) print(t *testing.T, w *world) {
 	fmt.Fprintf(&b, "messages: %d sent, %d to live sessions all delivered+read, %d acked; creator notices %d\n",
 		r.messages, r.deliveredAlive, len(l.acked), r.notices)
 	fmt.Fprintf(&b, "client errors: %v; HTTP 500s: %d; hub log errors: %d; reload ok: %v\n", l.errs, l.status500, len(r.hubErrors), r.reloadOK)
+	fmt.Fprintf(&b, "crashes: startup graces logged %d; db integrity %q\n", r.graces, r.integrity)
+	fmt.Fprintf(&b, "daemons: %d done tasks with draft PR, %d PRs created, %d open; daemon log errors %d\n",
+		len(r.prURL), r.prs, r.openPRs, len(r.daemonErrors))
+	for _, e := range r.daemonErrors {
+		fmt.Fprintf(&b, "  daemon error: %s\n", e)
+	}
+	fmt.Fprintf(&b, "daemon kill: %+v\n", r.kill)
 	for _, s := range r.samples {
 		fmt.Fprintf(&b, "hub proc %-24s fds=%d threads=%d\n", s.label, s.fds, s.threads)
 	}

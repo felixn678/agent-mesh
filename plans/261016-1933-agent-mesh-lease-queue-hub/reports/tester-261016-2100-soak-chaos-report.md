@@ -64,3 +64,51 @@ The add→claim p99 (~400 ms) is the actors' own work time (a busy session claim
 ## Unresolved questions
 1. Should tasks targeted at a dead session expire (gap 2), and after how long?
 2. Add `request_id` to task_add (gap 1) now or later?
+
+---
+
+# Addendum: hub SIGKILL crashes and real daemons
+
+Status: DONE (all invariants hold; no bug found outside internal/soak)
+
+## Added to the run
+- Chaos schedule: SIGTERM restart at 20 %, **SIGKILL crash** at 35 % and 75 % (no shutdown, no final reaper tick, WAL left dirty), SIGHUP reload (invite host-c) at 45 %, **daemon SIGKILL mid-task** at 55 %.
+- **Real `agent-mesh daemon`** on both hosts (fast daemon.toml: poll 300 ms, heartbeat 2 s, 2 slots, CPU throttle off), with the soak test binary symlinked as fake `claude` (works 1-3 s, commits one file), `gh` (shared PR state under flock) and `gitleaks`. Origins are temp bare repos. Daemons compete with sessions for untargeted and host-targeted tasks of the 3 session repos, and a 4th repo has daemons only (10 % of task_add), so the daemon path carries real load.
+- Drain: 30 s, then wait (≤150 s) until the daemon-only repo has no claimable backlog, then SIGTERM the daemons (they release), then the hub.
+- New invariants:
+  - durability: every (task, fence) a client received from a claim exists in the hub with fence ≥ that fence (nothing committed is lost by SIGKILL);
+  - `PRAGMA integrity_check` = ok after the crashes;
+  - startup grace logged after restarts (`extended leases after restart`);
+  - PRs: at most one open PR per task; every done task with a pr_url points at an open PR;
+  - daemon SIGKILL: the orphaned claude survives the daemon (own process group), is killed by the restarted daemon's orphan sweep, and the task is released without using an attempt (queued with attempts − 1, or reclaimed with attempts unchanged).
+
+## Results (final code)
+
+| | race, short (60 s chaos) | full (3 min chaos) |
+|---|---|---|
+| wall (incl. drain) | 3m03s (daemon backlog drain under race) | 3m32s |
+| tasks added / in hub | 802 / 802 | 1850 / 1850 |
+| end states | done 774, queued 28 | done 1738, stuck 1, queued 111 |
+| queued cause / stranded / running | all `target_session_dead` / 0 / 0 | all `target_session_dead` / 0 / 0 |
+| daemon-published tasks (draft PRs; all open, 1 per task) | 79 | 181 |
+| (task,fence) claims / request-id replays | — | 1843 / 190 |
+| claim latency p50 / p99 | — | 1.8 ms / 40 ms |
+| wake latency p50 / p99 | — | 2.0 ms / 59 ms (n=1272) |
+| messages sent / to live sessions delivered+read | — | 1722 / 1259 |
+| creator notices / finished | 774 / 774 | 1739 / 1739 |
+| startup graces logged (3 restarts) | 3 | 2 (one restart had no live lease to extend) |
+| DB integrity after 2 SIGKILLs | ok | ok |
+| durability (claims seen by clients present) | ok | ok |
+| HTTP 500 / hub log errors / daemon log errors | 0 / 0 / 0 | 0 / 0 / 0 |
+| daemon SIGKILL | orphan alive after kill → gone after restart; task queued, attempts 1 → 0, reason "released by host-b: daemon restart" | same |
+| hub FDs start idle → loaded → end idle | 9 → ~33 → 10 | 9 → 28-35 → 10 |
+
+The p99 latencies are higher than in the SIGTERM-only run (40-60 ms vs ~15 ms) because a share of requests land right after a crash restart (WAL recovery, reconnects); p50 is unchanged.
+
+## Findings
+- Hub and daemon: no bug found. SIGKILL lost no committed claim or complete, the WAL recovered cleanly, grace extended live leases, fences never duplicated, and daemon replay produced exactly one open PR per published task.
+- Harness only: the first race-short attempt flagged 88 "stranded" tasks. They were the daemon-only repo's backlog: under -race the 2×2 daemon slots could not keep up with 20 % of adds within a fixed 30 s drain. Fixed by waiting for the daemon backlog and lowering the share to 10 %; the rerun drained to 0.
+- `invite` now prints the code on its own line ("paste this code when asked: …"); the harness parses it and uses `join <url> <code>`.
+
+## Unresolved questions
+- None new. Gaps 1-2 above were routed by the lead.
