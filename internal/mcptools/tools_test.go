@@ -169,3 +169,13 @@ func TestHostsAndReportTools(t *testing.T) {
 	mustOK(t, cs, "hosts", map[string]any{"verbose": true}, "cpu_model cpu-x")
 	mustOK(t, cs, "morning_report", map[string]any{}, "eport")
 }
+
+func TestTaskAddRequestIDReplay(t *testing.T) {
+	h := startHub(t)
+	cs := connect(t, h, api.Principal{Host: "host-a", Session: true})
+	add := map[string]any{"repo": "r", "prompt": "p", "budget_usd": 1, "request_id": "req-1"}
+	mustOK(t, cs, "task_add", add, "queued #1")
+	mustOK(t, cs, "task_add", add, "already queued (same request_id) #1")
+	add["prompt"] = "different"
+	mustErr(t, cs, "task_add", add, "already used for task #1")
+}

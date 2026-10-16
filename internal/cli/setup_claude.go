@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -27,6 +25,7 @@ type setupEnv struct {
 	settingsPath string // ~/.claude/settings.json
 	claudeJSON   string // ~/.claude.json (read-only here; changed only via `claude mcp`)
 	hubURL       string
+	statePath    string // records which settings containers setup created (for exact uninstall)
 }
 
 type setupFlags struct{ uninstall, dryRun, force bool }
@@ -36,7 +35,11 @@ func defaultSetupEnv() (setupEnv, error) {
 	if err != nil {
 		return setupEnv{}, err
 	}
-	e := setupEnv{bin: selfBin(), home: home, hubURL: hubURL(),
+	state, err := stateDir()
+	if err != nil {
+		return setupEnv{}, err
+	}
+	e := setupEnv{bin: selfBin(), home: home, hubURL: sessionHubURL(), statePath: filepath.Join(state, "setup-claude.json"),
 		settingsPath: filepath.Join(home, ".claude", "settings.json"), claudeJSON: filepath.Join(home, ".claude.json")}
 	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		e.settingsPath, e.claudeJSON = filepath.Join(dir, "settings.json"), filepath.Join(dir, ".claude.json")
@@ -50,7 +53,7 @@ func runSetupClaude(ctx context.Context, std cmdIO, args []string) error {
 	var f setupFlags
 	fs.BoolVar(&f.uninstall, "uninstall", false, "remove only the agentmesh hooks and MCP server")
 	fs.BoolVar(&f.dryRun, "dry-run", false, "print the settings diff and claude commands; change nothing")
-	fs.BoolVar(&f.force, "force", false, "replace an existing, different agentmesh MCP server")
+	fs.BoolVar(&f.force, "force", false, "replace a user-scope agentmesh MCP server not written by setup-claude; allow a temporary binary path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -66,6 +69,12 @@ func runSetupClaude(ctx context.Context, std cmdIO, args []string) error {
 func setupClaude(ctx context.Context, std cmdIO, e setupEnv, f setupFlags) error {
 	if e.claude == "" && !f.dryRun {
 		return errors.New("setup-claude: `claude` not found on PATH")
+	}
+	if !f.uninstall && !f.force && strings.Contains(e.bin, "/go-build") {
+		return fmt.Errorf("setup-claude: %s is a `go run` build that will be deleted; run setup-claude from the installed agent-mesh binary (or pass --force)", e.bin)
+	}
+	if !f.uninstall && isTempBinary(e.bin) {
+		fmt.Fprintf(std.err, "warning: %s is in a temporary directory; hooks break if it is removed (re-run setup-claude from the installed binary)\n", e.bin)
 	}
 	if !f.uninstall {
 		if _, err := readSessionToken(); err != nil && !f.dryRun {
@@ -109,11 +118,15 @@ func editSettings(std cmdIO, e setupEnv, f setupFlags) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	edit := Merge
+	records := loadCreated(e.statePath)
+	var next []byte
+	var changed bool
+	var created Created
 	if f.uninstall {
-		edit = Unmerge
+		next, changed, err = Unmerge(orig, records[target])
+	} else {
+		next, changed, created, err = Merge(orig, e.bin)
 	}
-	next, changed, err := edit(orig, e.bin)
 	if err != nil {
 		return fmt.Errorf("setup-claude: %s: %w (file left untouched)", target, err)
 	}
@@ -141,8 +154,42 @@ func editSettings(std cmdIO, e setupEnv, f setupFlags) error {
 	if err := writeAtomic(target, next, mode); err != nil {
 		return err
 	}
+	if f.uninstall {
+		delete(records, target)
+	} else {
+		records[target] = records[target].Union(created)
+	}
+	if err := saveCreated(e.statePath, records); err != nil {
+		fmt.Fprintf(std.err, "warning: could not record setup state (%v); uninstall may leave empty hook containers\n", err)
+	}
 	fmt.Fprintf(std.out, "hooks: updated %s (backup %s.agentmesh-bak)\n", target, e.settingsPath)
 	return nil
+}
+
+// loadCreated reads the per-settings-file record of containers setup-claude
+// created; a missing or unreadable record means "none" (uninstall then only
+// removes our entries and leaves containers in place).
+func loadCreated(path string) map[string]Created {
+	m := map[string]Created{}
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &m)
+	}
+	return m
+}
+
+func saveCreated(path string, m map[string]Created) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	b, _ := json.MarshalIndent(m, "", "  ")
+	return writeAtomic(path, append(b, '\n'), 0o600)
+}
+
+// isTempBinary flags paths under the temp dir, which may not survive and
+// would then leave every hook failing silently.
+func isTempBinary(bin string) bool {
+	tmp := filepath.Clean(os.TempDir()) + string(filepath.Separator)
+	return strings.HasPrefix(filepath.Clean(bin), tmp)
 }
 
 // writeAtomic replaces path via a temp file in the same directory.
@@ -168,71 +215,6 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
-}
-
-// mcpConfig is the token-free user-scope server: Claude runs the
-// headersHelper to obtain the bearer from session.token.
-func mcpConfig(e setupEnv) map[string]any {
-	return map[string]any{"type": "http", "url": e.hubURL + "/mcp", "headersHelper": hookCommand(e.bin, "mcp-headers")}
-}
-
-// currentMCP reads the user-scope agentmesh entry (nil if absent).
-func currentMCP(path string) (map[string]any, error) {
-	b, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var cfg struct {
-		MCPServers map[string]map[string]any `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	return cfg.MCPServers[mcpName], nil
-}
-
-func editMCP(ctx context.Context, std cmdIO, e setupEnv, f setupFlags) error {
-	cur, err := currentMCP(e.claudeJSON)
-	if err != nil {
-		return err
-	}
-	want := mcpConfig(e)
-	wantJSON, _ := json.Marshal(want)
-	remove := []string{"mcp", "remove", "-s", "user", mcpName}
-	add := []string{"mcp", "add-json", "-s", "user", mcpName, string(wantJSON)}
-	var cmds [][]string
-	switch {
-	case f.uninstall && cur == nil:
-		fmt.Fprintln(std.out, "mcp: no user-scope agentmesh server")
-	case f.uninstall:
-		cmds = [][]string{remove}
-	case reflect.DeepEqual(cur, want):
-		fmt.Fprintln(std.out, "mcp: agentmesh already configured")
-	case cur != nil && !f.force:
-		fmt.Fprintln(std.err, "warning: a different user-scope agentmesh MCP server exists; rerun with --force to replace it")
-	case cur != nil:
-		cmds = [][]string{remove, add}
-	default:
-		cmds = [][]string{add}
-	}
-	for _, argv := range cmds {
-		if f.dryRun {
-			fmt.Fprintf(std.out, "would run: claude %s\n", shellJoin(argv))
-			continue
-		}
-		cmd := exec.CommandContext(ctx, e.claude, argv...) // argv, no shell
-		cmd.Dir = e.home
-		var out bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &out, &out
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("claude %s: %w: %s", argv[1], err, bytes.TrimSpace(out.Bytes()))
-		}
-		fmt.Fprintf(std.out, "mcp: ran claude %s\n", shellJoin(argv[:min(len(argv), 5)]))
-	}
-	return nil
 }
 
 func shellJoin(argv []string) string {

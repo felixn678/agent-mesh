@@ -2,7 +2,8 @@
 // command (CLI, hooks, waiter, setup-claude, report), so they all agree.
 //
 // URL: $AGENTMESH_URL, else hub_url in <config-dir>/client.toml, else in
-// <config-dir>/daemon.toml, else the loopback default.
+// <config-dir>/daemon.toml, else the loopback default. Session-token clients
+// use SessionHubURL, which skips the environment variable.
 //
 // Tokens live in <config-dir> (config.DefaultDir): session.token for
 // interactive work, admin.token for cancel/requeue/report.
@@ -13,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/felixn678/agent-mesh/internal/client"
 	"github.com/felixn678/agent-mesh/internal/config"
@@ -39,6 +42,27 @@ func HubURL() string {
 // doctor share one resolver.
 func HubURLIn(configDir string) (url, source string) {
 	return config.HubURL(configDir)
+}
+
+// SessionHubURL resolves the hub URL for clients that send the session
+// token (hooks, waiter, MCP headers helper, setup-claude): client.toml, else
+// daemon.toml, else loopback. It ignores $AGENTMESH_URL on purpose: a
+// project's .claude/settings.json "env" can set it for every hook, and the
+// session token must only go to the hub the user configured.
+func SessionHubURL() string {
+	dir, err := config.DefaultDir()
+	if err != nil {
+		return DefaultHubURL
+	}
+	for _, name := range []string{"client.toml", "daemon.toml"} {
+		var c struct {
+			HubURL string `toml:"hub_url"`
+		}
+		if _, err := toml.DecodeFile(filepath.Join(dir, name), &c); err == nil && c.HubURL != "" {
+			return c.HubURL
+		}
+	}
+	return DefaultHubURL
 }
 
 // File returns <config-dir>/name.

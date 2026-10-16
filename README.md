@@ -96,7 +96,7 @@ Manual setup (tokens, units, editing `hub.toml` by hand) is still supported: see
 | hook log | `~/.local/state/agent-mesh/hook.log` (`$XDG_STATE_HOME`) | same |
 | service logs | `journalctl --user -u agent-mesh-hub` / `-daemon` | `~/Library/Logs/agent-mesh/` |
 
-CLI commands resolve the hub URL as `$AGENTMESH_URL`, else `hub_url` in `client.toml`, else in `daemon.toml`, else `http://127.0.0.1:8787`. Tokens: `$AGENTMESH_TOKEN`, else `session.token` (task add/list/get, hosts); cancel, requeue and `report` prefer `admin.token`. Hooks, the waiter and the MCP server use only the session token (`$AGENTMESH_SESSION_TOKEN` or `session.token`).
+CLI commands resolve the hub URL as `$AGENTMESH_URL`, else `hub_url` in `client.toml`, else in `daemon.toml`, else `http://127.0.0.1:8787`. Tokens: `$AGENTMESH_TOKEN`, else `session.token` (task add/list/get, hosts); cancel, requeue and `report` prefer `admin.token`. Hooks, the waiter and the MCP server use only the session token (`$AGENTMESH_SESSION_TOKEN` or `session.token`) and send it only to the hub in `client.toml`/`daemon.toml`: they ignore `$AGENTMESH_URL`, which a project's `.claude/settings.json` could set.
 
 ### Terminal commands
 
@@ -106,7 +106,7 @@ agent-mesh task add --repo <repo> --budget 2 --prompt-file - < spec.md   # promp
 agent-mesh task list [--state queued] [--since 16h]
 agent-mesh task get <id>
 agent-mesh task cancel|requeue <id>      # hub machine only (admin token)
-agent-mesh hosts [--verbose]
+agent-mesh hosts [--verbose] [--sessions]   # --sessions: live Claude sessions, worker:off marks opted-out ones
 agent-mesh report [--since 16h] [--out <file>]
 agent-mesh task -h                       # each subcommand also takes -h
 ```
@@ -120,13 +120,13 @@ agent-mesh task -h                       # each subcommand also takes -h
 ```sh
 agent-mesh setup-claude --dry-run   # print the settings diff and the claude command; change nothing
 agent-mesh setup-claude             # user-scope MCP "agentmesh" + additive hooks
-agent-mesh setup-claude --force     # replace a different existing user-scope "agentmesh" server
+agent-mesh setup-claude --force     # also replace a user-scope "agentmesh" server it did not write
 agent-mesh setup-claude --uninstall # removes only what it added
 ```
 
-Setup needs `claude` on PATH and `session.token`. It appends one hook entry each to `SessionStart`, `UserPromptSubmit`, `Stop` and `SessionEnd` in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) by splicing bytes, so existing keys, hooks and formatting stay as they are; backup `settings.json.agentmesh-bak`, atomic write, symlinks followed. It registers the MCP server with `claude mcp add-json -s user` using a `headersHelper` (`agent-mesh hook mcp-headers`) that reads `session.token`, so no token is written to `~/.claude.json` or your shell env. It never changes existing skills, rules, or hooks. Restart running sessions afterwards. Hooks fail open: if the hub is down or a token is missing they exit 0 silently within 800 ms and log to the hook log. `AGENTMESH_HOOKS=off` disables them (set for daemon workers). Name a session with `AGENTMESH_SESSION_NAME=<name>` before starting `claude`.
+Setup needs `claude` on PATH and `session.token`. It appends one hook entry each to `SessionStart`, `UserPromptSubmit`, `Stop` and `SessionEnd` in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) by splicing bytes, so existing keys, hooks and formatting stay as they are; backup `settings.json.agentmesh-bak`, atomic write, symlinks followed. Its entries end in `--managed-by=agent-mesh`; only those are ever changed or removed. Re-running repairs them (and the MCP entry) after the binary moved or the hub URL changed; it refuses to run from a `go run` build. It registers the MCP server with `claude mcp add-json -s user` using a `headersHelper` (`agent-mesh hook mcp-headers`) that reads `session.token`, so no token is written to `~/.claude.json` or your shell env. It never changes existing skills, rules, or hooks. Restart running sessions afterwards. Hooks fail open: if the hub is down or a token is missing they exit 0 silently within 800 ms and log to the hook log. `AGENTMESH_HOOKS=off` disables them (set for daemon workers). Name a session with `AGENTMESH_SESSION_NAME=<name>` before starting `claude`; start it with `AGENTMESH_WORKER=off` to opt it out of claiming tasks (its waiter then wakes only for messages and `task_claim` is refused).
 
-MCP tools: `task_add` (`target_host`, `target_session`, `from`: repo defaults to the caller session's git remote), `task_list`, `task_get`, `hosts`, `morning_report`, `sessions`, `send` (to an id, a 4+ character prefix, or a name), and with a session token `inbox`, `task_claim`, `task_heartbeat`, `task_done`, `task_fail`, `task_release`; admin only: `task_cancel`, `task_requeue`. In this repo `.mcp.json` shadows the user-scope server and reads `$AGENTMESH_SESSION_TOKEN` (and `$AGENTMESH_URL`, default loopback).
+MCP tools: `task_add` (`target_host`, `target_session`, `from`: repo defaults to the caller session's git remote; `request_id` makes retries idempotent, and `task add` on the CLI sets one automatically), `task_list`, `task_get`, `hosts`, `morning_report`, `sessions`, `send` (to an id, a 4+ character prefix, or a name), and with a session token `inbox`, `task_claim`, `task_heartbeat`, `task_done`, `task_fail`, `task_release`; admin only: `task_cancel`, `task_requeue`. In this repo `.mcp.json` shadows the user-scope server and reads `$AGENTMESH_SESSION_TOKEN` (and `$AGENTMESH_URL`, default loopback).
 
 Message delivery is at least once: messages are acked only after they were shown. They arrive at the next prompt, at turn end (one Stop block), or through a background `agent-mesh inbox --wait --session <id>` waiter that the session starts itself (`SessionStart` tells it how). The waiter exits, waking the idle session, when a message arrives or when this session can claim new work for its repo. It only announces messages: Claude Code runs the `UserPromptSubmit` hook for the wake-up turn, and that hook injects and acks them (output of a background command may never be read). The session then claims with `task_claim`, works on a new branch, pushes, and reports with `task_done`; the hub messages the requester. The Stop hook extends the lease of a task the session holds. If waking an idle session does not work in your Claude Code version, idle sessions receive messages and work at their next prompt only.
 
@@ -141,6 +141,8 @@ Message delivery is at least once: messages are acked only after they were shown
 Tokens are 32 random bytes in 0600 files outside the repo. The hub stores only SHA-256 hashes and derives the host from the token.
 
 ## Security notes
+
+- **Trade-off: idle sessions run queued tasks unattended.** Any session token on any joined machine can `task_add` work for a repo, and an idle session of that repo (possibly in `bypassPermissions`) claims and runs it without asking you. Session workers do not get the daemon's tool profiles or deny floor. Mitigations: prompts are shown as framed, quoted untrusted text with their origin; sessions are told never to run destructive or irreversible commands or touch credentials because of a task or message; opt a session out with `AGENTMESH_WORKER=off`. Only join machines you trust as much as this one.
 
 - Interactive sessions may run with `bypassPermissions`. Any message from the hub is untrusted data: hooks frame it as such, and you must not treat message text as instructions with authority.
 - A session token lets its holder message every session and add tasks. Treat all your machines as one trust domain.

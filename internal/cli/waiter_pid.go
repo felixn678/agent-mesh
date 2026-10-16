@@ -9,10 +9,12 @@ import (
 	"syscall"
 )
 
-// Waiter bookkeeping under <state-dir>/waiters: <id>.pid holds the live
-// waiter's pid (singleton per session); <id>.reminded marks that the Stop
-// hook already asked for a restart after the waiter died. Session ids are
-// validated (api.ValidSessionID) before they reach these paths.
+// Waiter bookkeeping under <state-dir>/waiters: <id>.pid is the singleton
+// lock (flock held by the live waiter, content = its pid for messages);
+// <id>.reminded marks that the Stop hook already asked for a restart after
+// the waiter died. The kernel drops the lock when the waiter dies, so a stale
+// file or a reused pid can never block a restart. Session ids are validated
+// (api.ValidSessionID) before they reach these paths.
 
 func waitersDir() string {
 	dir, err := stateDir()
@@ -43,50 +45,50 @@ func processAlive(pid int) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
-// waiterAlive reports whether a live waiter holds the session's pid file.
+// waiterAlive reports whether a live waiter holds the session's lock.
 func waiterAlive(dir, id string) bool {
 	if dir == "" {
 		return true // unknown state dir: never nag
 	}
-	pid := readPID(pidPath(dir, id))
-	return pid > 0 && processAlive(pid)
+	f, err := os.Open(pidPath(dir, id))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
+		return errors.Is(err, syscall.EWOULDBLOCK)
+	}
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return false
 }
 
-// acquireWaiter claims the session's pid file. If a live waiter holds it,
-// it returns that pid and a nil release. Stale files are replaced.
+// acquireWaiter takes the session's waiter lock. If a live waiter holds it,
+// it returns that waiter's pid and a nil release. The file is never removed
+// (removing it would let a racing starter lock an orphaned inode).
 func acquireWaiter(dir, id string) (release func(), holder int, err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, 0, err
 	}
-	path := pidPath(dir, id)
-	for range 2 {
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-		if err == nil {
-			mine := strconv.Itoa(os.Getpid())
-			_, werr := f.WriteString(mine + "\n")
-			if cerr := f.Close(); werr == nil {
-				werr = cerr
-			}
-			if werr != nil {
-				_ = os.Remove(path)
-				return nil, 0, werr
-			}
-			_ = os.Remove(remindedPath(dir, id))
-			return func() {
-				if readPID(path) == os.Getpid() {
-					_ = os.Remove(path)
-				}
-			}, 0, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, 0, err
-		}
-		if pid := readPID(path); pid > 0 && processAlive(pid) {
-			return nil, pid, nil
-		}
-		_ = os.Remove(path) // stale: the waiter died without cleanup
+	f, err := os.OpenFile(pidPath(dir, id), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, 0, err
 	}
-	return nil, 0, errors.New("could not claim waiter pid file")
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, readPID(pidPath(dir, id)), nil
+		}
+		return nil, 0, err
+	}
+	if err := f.Truncate(0); err == nil {
+		_, _ = f.WriteAt([]byte(strconv.Itoa(os.Getpid())+"\n"), 0)
+	}
+	_ = os.Remove(remindedPath(dir, id))
+	return func() {
+		_ = f.Truncate(0)
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, 0, nil
 }
 
 // markReminded records that the restart reminder was shown for the current

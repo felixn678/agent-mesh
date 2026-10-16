@@ -31,8 +31,9 @@ func testEnv(t *testing.T, h *hubtest.Hub) string {
 	t.Setenv("AGENTMESH_SESSION_TOKEN", "")
 	t.Setenv("AGENTMESH_HOOKS", "")
 	t.Setenv("AGENTMESH_SESSION_NAME", "")
+	t.Setenv("AGENTMESH_URL", "")
 	if h != nil {
-		t.Setenv("AGENTMESH_URL", h.URL)
+		writeClientTOML(t, h.URL)
 		p, err := hubenv.File(hubenv.SessionTokenFile)
 		if err != nil {
 			t.Fatal(err)
@@ -42,6 +43,21 @@ func testEnv(t *testing.T, h *hubtest.Hub) string {
 		}
 	}
 	return home
+}
+
+// writeClientTOML points the config at url, as `up`/`join` do.
+func writeClientTOML(t *testing.T, url string) {
+	t.Helper()
+	p, err := hubenv.File("client.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("hub_url = \""+url+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // startHub starts a test hub and waits until it serves, so stopping it early

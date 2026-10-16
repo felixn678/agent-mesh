@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -80,7 +82,7 @@ func taskAdd(ctx context.Context, std cmdIO, c *client.Client, args []string) er
 	if err := spec.WithDefaults().Validate(); err != nil {
 		return err
 	}
-	t, err := c.AddTask(ctx, spec)
+	t, err := addWithRetry(ctx, c, spec, addRetryDelay)
 	if err != nil {
 		return err
 	}
@@ -159,6 +161,7 @@ func taskByID(ctx context.Context, std cmdIO, c *client.Client, op string, args 
 func runHosts(ctx context.Context, std cmdIO, args []string) error {
 	fs := newFlags("hosts", std)
 	verbose := fs.Bool("verbose", false, "include cpu model and versions")
+	sessions := fs.Bool("sessions", false, "also list live Claude sessions (worker:off marks opted-out ones)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -177,5 +180,48 @@ func runHosts(ctx context.Context, std cmdIO, args []string) error {
 	for _, h := range hosts {
 		fmt.Fprintln(std.out, format.HostLine(h, now, *verbose))
 	}
+	if !*sessions {
+		return nil
+	}
+	list, err := c.ListSessions(ctx, true)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(std.out, "sessions (%d live):\n", len(list))
+	for _, s := range list {
+		fmt.Fprintln(std.out, "  "+format.SessionLine(s, now))
+	}
 	return nil
+}
+
+// addRetryDelay spaces task-add retries after network errors (tests shorten it).
+var addRetryDelay = time.Second
+
+// addWithRetry sends the add with a fresh request id and, after a network
+// error or timeout (the hub may have stored the task), retries with the SAME
+// id so the hub returns the task it already made instead of a duplicate.
+// Hub answers (4xx/5xx) are not retried.
+func addWithRetry(ctx context.Context, c *client.Client, spec api.TaskSpec, delay time.Duration) (api.Task, error) {
+	if spec.RequestID == "" {
+		b := make([]byte, 12)
+		if _, err := rand.Read(b); err != nil {
+			return api.Task{}, err
+		}
+		spec.RequestID = "cli-" + hex.EncodeToString(b)
+	}
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		t, err := c.AddTask(ctx, spec)
+		var he *client.HTTPError
+		if err == nil || errors.As(err, &he) || ctx.Err() != nil {
+			return t, err
+		}
+		lastErr = err
+		select {
+		case <-ctx.Done():
+			return api.Task{}, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return api.Task{}, fmt.Errorf("task add failed after retries (request_id %s; rerun is safe only with a new prompt or after checking task list): %w", spec.RequestID, lastErr)
 }

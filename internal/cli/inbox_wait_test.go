@@ -4,7 +4,9 @@ import (
 	"context"
 	"github.com/felixn678/agent-mesh/internal/cli/hubenv"
 	"os"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,8 +127,9 @@ func TestWaiterSingletonAndStalePID(t *testing.T) {
 	registerFixture(t, h)
 	dir := waitersDir()
 	_ = os.MkdirAll(dir, 0o700)
-	// Stale pid file (no such process) and a stale reminder marker.
-	_ = os.WriteFile(pidPath(dir, fixtureSession), []byte("2147483646\n"), 0o600)
+	// Stale file naming a live, unrelated pid (pid reuse) with no lock held,
+	// and a stale reminder marker: neither blocks a new waiter.
+	_ = os.WriteFile(pidPath(dir, fixtureSession), []byte(strconv.Itoa(os.Getppid())+"\n"), 0o600)
 	_ = os.WriteFile(remindedPath(dir, fixtureSession), nil, 0o600)
 	ctx, cancel := context.WithCancel(bg)
 	done, _ := startWaiter(t, ctx, fastWait)
@@ -186,5 +189,31 @@ func TestInboxOneShot(t *testing.T) {
 	peer(t, h, "hello")
 	if out, _, err := runCLI(t, "", "inbox", "--session", fixtureSession); err != nil || !strings.Contains(out, "> hello") {
 		t.Fatalf("%q %v", out, err)
+	}
+}
+
+func TestWaiterExitsQuietlyWhenSessionProcessIsGone(t *testing.T) {
+	h := startHub(t)
+	testEnv(t, h)
+	registerFixture(t, h)
+	var gone atomic.Bool
+	o := fastWait
+	o.parentGone, o.parentCheck = gone.Load, 20*time.Millisecond
+	done, _ := startWaiter(t, bg, o)
+	waitFor(t, func() bool { return waiterAlive(waitersDir(), fixtureSession) })
+	gone.Store(true)
+	select {
+	case r := <-done:
+		if r.err != nil || r.out != "" {
+			t.Fatalf("orphaned waiter must exit silently: %q %v", r.out, r.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("waiter outlived its session")
+	}
+	if waiterAlive(waitersDir(), fixtureSession) {
+		t.Fatal("lock still held")
+	}
+	if os.Getppid() > 1 && parentPID(os.Getpid()) != os.Getppid() {
+		t.Fatalf("parentPID(%d) = %d, want %d", os.Getpid(), parentPID(os.Getpid()), os.Getppid())
 	}
 }

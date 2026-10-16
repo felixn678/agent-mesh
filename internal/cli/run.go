@@ -19,7 +19,7 @@ const usage = `usage:
                       [--mode acceptEdits|dontAsk|plan] [--profile p] [--host h] [--max-attempts n]
   agent-mesh task list [--state s] [--since 16h]
   agent-mesh task get|cancel|requeue <id>
-  agent-mesh hosts [--verbose]
+  agent-mesh hosts [--verbose] [--sessions]
   agent-mesh inbox --session <id> [--wait]
   agent-mesh hook session-start|prompt|stop|session-end|mcp-headers
   agent-mesh setup-claude [--uninstall] [--dry-run] [--force]`

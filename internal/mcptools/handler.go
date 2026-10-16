@@ -78,11 +78,13 @@ func storeErr(err error) *mcp.CallToolResult {
 	case errors.Is(err, store.ErrCancelled):
 		return errResult("task was cancelled; stop working on it")
 	case errors.Is(err, store.ErrConflict):
-		return errResult("task state does not allow this operation")
+		return errResult("conflict: %v", err) // store messages carry no secrets
 	case errors.Is(err, store.ErrSessionNotFound):
 		return errResult("session not found")
 	case errors.Is(err, store.ErrSessionOwner):
 		return errResult("session belongs to another host; pass your own agentmesh session id")
+	case errors.Is(err, store.ErrNotWorker):
+		return errResult("this session opted out of worker mode (AGENTMESH_WORKER=off); it does not claim tasks")
 	case errors.Is(err, store.ErrSessionEnded):
 		return errResult("session has ended")
 	case errors.Is(err, store.ErrInboxFull):

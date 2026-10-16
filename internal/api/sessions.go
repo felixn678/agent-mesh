@@ -16,6 +16,7 @@ type Session struct {
 	Cwd        string `json:"cwd,omitempty"`
 	Name       string `json:"name,omitempty"`
 	Repo       string `json:"repo,omitempty"` // normalized project key
+	Worker     bool   `json:"worker"`         // may claim tasks
 	StartedAt  int64  `json:"started_at"`
 	LastSeenAt int64  `json:"last_seen_at"`
 	EndedAt    int64  `json:"ended_at,omitempty"`
@@ -28,6 +29,9 @@ type RegisterSessionRequest struct {
 	Cwd  string `json:"cwd,omitempty"`
 	Name string `json:"name,omitempty"`
 	Repo string `json:"repo,omitempty"` // git remote URL or key; normalized by the hub; empty keeps the stored value
+	// Worker opts the session in or out of claiming tasks (nil keeps the
+	// stored value; new sessions default to true).
+	Worker *bool `json:"worker,omitempty"`
 }
 
 // EndSessionRequest marks a session ended.

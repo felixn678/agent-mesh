@@ -106,3 +106,25 @@ func TestWaiterWakesOnceForClaimableWork(t *testing.T) {
 		t.Fatal("new work did not wake the waiter")
 	}
 }
+
+func TestWorkerOptOutAtSessionStart(t *testing.T) {
+	h := startHub(t)
+	testEnv(t, h)
+	t.Setenv("AGENTMESH_WORKER", "off")
+	cwd := gitRepoCwd(t, "https://github.com/owner/proj")
+	out, _, err := runCLI(t, hookStdin(cwd, "SessionStart", false), "hook", "session-start")
+	if err != nil || !strings.Contains(out, "never call task_claim") || strings.Contains(out, "When it reports claimable tasks") ||
+		!strings.Contains(out, "never run destructive") {
+		t.Fatalf("%q %v", out, err)
+	}
+	list, _ := h.Store.ListSessions(bg, true)
+	if len(list) != 1 || list[0].Worker {
+		t.Fatalf("worker flag not sent: %+v", list)
+	}
+	// Claimable work never wakes an opted-out session's waiter.
+	h.Session("host-b").AddTask(bg, api.TaskSpec{Repo: "github.com/owner/proj", Prompt: "p", MaxBudgetUSD: 1})
+	done, _ := startWaiter(t, bg, waitOpts{maxDur: 2 * time.Second, poll: time.Second, backoffMin: time.Millisecond, backoffMax: time.Millisecond, cooldownPoll: 100 * time.Millisecond})
+	if r := <-done; !strings.Contains(r.out, "no messages in 2s") {
+		t.Fatalf("opted-out waiter woke: %q %v", r.out, r.err)
+	}
+}

@@ -20,6 +20,9 @@ import (
 // in settings) is only a backstop.
 const hookTimeout = 800 * time.Millisecond
 
+// ackTimeout bounds the ack sent after a hook's output is written.
+const ackTimeout = 500 * time.Millisecond
+
 // hookLogMax caps <state-dir>/hook.log before it is rotated to hook.log.1.
 const hookLogMax = 256 * 1024
 
@@ -39,6 +42,10 @@ func hooksOff() bool { return os.Getenv("AGENTMESH_HOOKS") == "off" }
 // to <state-dir>/hook.log and the hook exits 0 with no output, so a missing
 // token or a down hub never disturbs the session.
 func runHook(ctx context.Context, std cmdIO, args []string) error {
+	// Commands written by setup-claude carry a trailing ownership marker.
+	if len(args) == 2 && args[1] == managedFlag {
+		args = args[:1]
+	}
 	if len(args) != 1 {
 		return errors.New("usage: hook session-start|prompt|stop|session-end|mcp-headers")
 	}
@@ -48,6 +55,7 @@ func runHook(ctx context.Context, std cmdIO, args []string) error {
 	if hooksOff() {
 		return nil
 	}
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, hookTimeout)
 	defer cancel()
 	out, h, err := hookEvent(ctx, std.in, args[0])
@@ -63,7 +71,11 @@ func runHook(ctx context.Context, std cmdIO, args []string) error {
 		return nil // not acked: the messages are delivered again next time
 	}
 	if len(h.shown) > 0 {
-		if _, err := h.c.AckMessages(ctx, h.in.SessionID, h.shown); err != nil {
+		// Own budget: a slow hub must not starve the ack (else the same
+		// messages are injected on every prompt).
+		ackCtx, cancelAck := context.WithTimeout(parent, ackTimeout)
+		defer cancelAck()
+		if _, err := h.c.AckMessages(ackCtx, h.in.SessionID, h.shown); err != nil {
 			logHook(args[0]+" ack", err) // at-least-once: they will show again
 		}
 	}
@@ -121,9 +133,9 @@ type hookCtx struct {
 
 // register refreshes the session; repo is sent only at session start (an
 // empty repo keeps the stored one).
-func (h *hookCtx) register(repo string) (api.Session, error) {
+func (h *hookCtx) register(repo string, worker *bool) (api.Session, error) {
 	return h.c.RegisterSession(h.ctx, api.RegisterSessionRequest{
-		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo})
+		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo, Worker: worker})
 }
 
 // unread renders the session's unread messages ("" if none) without marking
@@ -139,15 +151,12 @@ func (h *hookCtx) unread() (string, error) {
 }
 
 func (h *hookCtx) sessionStart() ([]byte, error) {
-	s, err := h.register(gitRemote(h.ctx, h.in.Cwd))
+	worker := workerMode()
+	s, err := h.register(gitRemote(h.ctx, h.in.Cwd), &worker)
 	if err != nil {
 		return nil, err
 	}
-	text := fmt.Sprintf("agentmesh: your session id is %s (%s). Pass it as `from`/`session` to the agentmesh MCP tools. "+
-		"To receive messages and work while idle, start `%s` with run_in_background; when it exits, handle what it printed, "+
-		"then restart it. If it says already running, do not restart. When it reports claimable tasks and you are idle: "+
-		"task_claim, do the task in this repo on a new branch, push the branch, task_done with a summary, restart the waiter. "+
-		"Never claim while in the middle of other work.", s.ID, s.Host, waiterCommand(s.ID))
+	text := sessionStartText(s, worker)
 	msgs, err := h.unread()
 	if err != nil {
 		return nil, err
@@ -159,7 +168,7 @@ func (h *hookCtx) sessionStart() ([]byte, error) {
 }
 
 func (h *hookCtx) prompt() ([]byte, error) {
-	if _, err := h.register(""); err != nil {
+	if _, err := h.register("", nil); err != nil {
 		return nil, err
 	}
 	msgs, err := h.unread()
@@ -176,7 +185,7 @@ func (h *hookCtx) prompt() ([]byte, error) {
 // death to ask for a restart. stop_hook_active (a stop already continued by
 // a hook) always allows, so a session can never loop.
 func (h *hookCtx) stop() ([]byte, error) {
-	if _, err := h.register(""); err != nil {
+	if _, err := h.register("", nil); err != nil {
 		return nil, err
 	}
 	if err := heartbeatHeld(h.ctx, h.c, h.in.SessionID); err != nil {
