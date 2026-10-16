@@ -53,11 +53,14 @@ The invite line contains the new machine's tokens: send it over a private channe
 
 Manual setup (tokens, units, editing `hub.toml` by hand) is still supported: see [docs/deployment-guide.md](docs/deployment-guide.md).
 
-CLI commands read the hub URL and token from your config; use the admin token for cancel/requeue and the morning report (see the deployment guide for wiring it via a gitignored `.envrc`).
+CLI commands resolve the hub URL as `$AGENTMESH_URL`, else `hub_url` in `client.toml`, else in `daemon.toml` (config dir `~/.config/agent-mesh`), else `http://127.0.0.1:8787`. Tokens: `$AGENTMESH_TOKEN`, else `session.token` (task add/list/get, hosts); cancel, requeue and `report` prefer `admin.token`. Hooks, the waiter and the MCP server use only the session token (`$AGENTMESH_SESSION_TOKEN` or `session.token`).
 
 ```sh
 agent-mesh task add --repo <repo> --prompt "fix the flaky test" [--host <host-name>] [--budget 5]
-agent-mesh task list
+agent-mesh task add --repo <repo> --prompt-file - < spec.md    # prompt from stdin
+agent-mesh task list [--state queued] [--since 16h]
+agent-mesh task get|cancel|requeue <id>
+agent-mesh hosts [--verbose]
 agent-mesh report --since 16h
 ```
 
@@ -66,14 +69,17 @@ agent-mesh report --since 16h
 `install.sh` never touches `~/.claude*`. To let interactive sessions use the hub, run on each host:
 
 ```sh
-agent-mesh setup-claude --dry-run   # review the diff
+agent-mesh setup-claude --dry-run   # print the settings diff and the claude command; change nothing
 agent-mesh setup-claude             # user-scope MCP "agentmesh" + additive hooks
+agent-mesh setup-claude --force     # replace a different existing user-scope "agentmesh" server
 agent-mesh setup-claude --uninstall # removes only what it added
 ```
 
-Setup adds hook entries (`SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd`) to `~/.claude/settings.json` (backup: `settings.json.agentmesh-bak`) and one user-scope MCP server. It never changes existing skills, rules, or hooks. Restart running sessions afterwards. Hooks fail open: if the hub is down they exit 0 silently.
+Setup needs `claude` on PATH and `session.token`. It appends one hook entry each to `SessionStart`, `UserPromptSubmit`, `Stop` and `SessionEnd` in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) by splicing bytes, so existing keys, hooks and formatting stay as they are; backup `settings.json.agentmesh-bak`, atomic write, symlinks followed. It registers the MCP server with `claude mcp add-json -s user` using a `headersHelper` (`agent-mesh hook mcp-headers`) that reads `session.token`, so no token is written to `~/.claude.json` or your shell env. It never changes existing skills, rules, or hooks. Restart running sessions afterwards. Hooks fail open: if the hub is down or a token is missing they exit 0 silently within 800 ms and log to `~/.local/state/agent-mesh/hook.log`. `AGENTMESH_HOOKS=off` disables them (set for daemon workers). Name a session with `AGENTMESH_SESSION_NAME=<name>`.
 
-Message delivery: at the next prompt, at turn end (one Stop block), and to an idle session through a background `agent-mesh inbox --wait` waiter that the session starts itself. If waking an idle session does not work in your Claude Code version, idle sessions receive messages at their next prompt only.
+MCP tools: `task_add` (`target_host`, `target_session`, `from`: repo defaults to the caller session's git remote), `task_list`, `task_get`, `hosts`, `morning_report`, `sessions`, `send` (to an id, a 4+ character prefix, or a name), and with a session token `inbox`, `task_claim`, `task_heartbeat`, `task_done`, `task_fail`, `task_release`; admin only: `task_cancel`, `task_requeue`. In this repo `.mcp.json` shadows the user-scope server and reads `$AGENTMESH_SESSION_TOKEN`.
+
+Message delivery is at least once: messages are acked only after they were shown. They arrive at the next prompt, at turn end (one Stop block), or through a background `agent-mesh inbox --wait --session <id>` waiter that the session starts itself (`SessionStart` tells it how). The waiter exits, waking the idle session, when a message arrives or when this session can claim new work for its repo. The session then claims with `task_claim`, works on a new branch, pushes, and reports with `task_done`; the hub messages the requester. The Stop hook extends the lease of a task the session holds. If waking an idle session does not work in your Claude Code version, idle sessions receive messages and work at their next prompt only.
 
 ## Tokens
 

@@ -12,12 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/felixn678/agent-mesh/internal/client"
-	"github.com/felixn678/agent-mesh/internal/config"
+	"github.com/felixn678/agent-mesh/internal/cli/hubenv"
 )
-
-// defaultHubURL is the v1 loopback hub.
-const defaultHubURL = "http://127.0.0.1:8787"
 
 // Run is the `agent-mesh report` entry point (args exclude the subcommand).
 func Run(ctx context.Context, args []string) error { return run(ctx, args, os.Stdout) }
@@ -32,15 +28,11 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	if fs.NArg() > 0 || *since <= 0 {
 		return errors.New("usage: agent-mesh report [--since 16h] [--out path]")
 	}
-	url := os.Getenv("AGENTMESH_URL")
-	if url == "" {
-		url = defaultHubURL
-	}
-	tok, err := adminToken()
+	c, err := hubenv.Client(hubenv.AdminToken) // shared URL/token resolution
 	if err != nil {
 		return err
 	}
-	md, err := client.New(url, tok).Report(ctx, time.Now().Add(-*since))
+	md, err := c.Report(ctx, time.Now().Add(-*since))
 	if err != nil {
 		return err
 	}
@@ -53,18 +45,6 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	_, err = fmt.Fprintf(stdout, "wrote %s\n", *out)
 	return err
-}
-
-// adminToken reads $AGENTMESH_TOKEN, else <config-dir>/admin.token.
-func adminToken() (string, error) {
-	if tok := strings.TrimSpace(os.Getenv("AGENTMESH_TOKEN")); tok != "" {
-		return tok, nil
-	}
-	dir, err := config.DefaultDir()
-	if err != nil {
-		return "", err
-	}
-	return config.ReadToken(filepath.Join(dir, "admin.token"))
 }
 
 // writeOutside writes the report to path with mode 0600 (parents 0700). The

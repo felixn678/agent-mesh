@@ -51,7 +51,7 @@ Units use `Restart=on-failure`, `RestartSec=10`, `StartLimitIntervalSec=0` so a 
 
 ### Admin token for the CLI
 
-Keep it out of shell-global env. Use a gitignored `.envrc` (direnv) in the agent-mesh checkout or a wrapper script that reads `~/.config/agent-mesh/admin.token`. Interactive sessions elsewhere use the host's session token via `setup-claude`.
+Keep it out of shell-global env. Use a gitignored `.envrc` (direnv) in the agent-mesh checkout or a wrapper script that reads `~/.config/agent-mesh/admin.token`. Interactive sessions elsewhere use the host's session token via `setup-claude`. This repo's `.mcp.json` expects the session token in `AGENTMESH_SESSION_TOKEN` (for example `export AGENTMESH_SESSION_TOKEN="$(cat ~/.config/agent-mesh/session.token)"` in the same `.envrc`); the hub refuses admin and daemon tokens on session endpoints.
 
 ## Optional: Tailscale and a second host (manual)
 
