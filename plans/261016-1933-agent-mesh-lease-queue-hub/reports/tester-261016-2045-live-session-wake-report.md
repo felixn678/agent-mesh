@@ -43,3 +43,21 @@ Status: DONE_WITH_CONCERNS (all 6 checks observed live; 1 delivery bug found and
 
 ## Unresolved questions
 - Should SessionStart also tell the session to start the waiter immediately (a hook cannot run it; the model only acts on its first turn)?
+
+## Final re-verification on main (bee064d), 2026-10-16 21:30
+
+Status: DONE, all 6 checks passed live; no code changes needed.
+
+Setup: same isolation (scratch `HOME`/`XDG_*` per identity; real HOME only for Claude auth; no change to the user's `~/.claude*` config). `up --no-service` hub + `invite hb` / `join` (code pasted on stdin). Hook and MCP files were produced by the **real `agent-mesh setup-claude`** on each identity's temp HOME (real `claude mcp add-json` wrote the temp `~/.claude.json`), then passed unchanged via `--settings` / `--mcp-config --strict-mcp-config --setting-sources project,local`: managed commands `<bin> hook <event> --managed-by=agent-mesh`, MCP `headersHelper` = `<bin> hook mcp-headers --managed-by=agent-mesh` (no token in any file). Sessions (haiku, bypassPermissions): alpha (host ha, repoA `https://…/live-final.git`), beta (host hb, repoB `git@…:…/live-final.git`), gamma (host hb, repoC `ssh://git@…/live-final`, `AGENTMESH_WORKER=off`).
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Managed hooks + headersHelper as users get them | PASS | All 3 sessions registered with repo `github.com/<org>/live-final`; alpha's MCP `task_add` calls authenticated through `headersHelper` under `--mcp-config` |
+| 2a | Idle wake on message | PASS | REST send alpha→beta; idle beta woke, prompt hook injected, replied "7": **6.0 s** send→reply; both messages acked |
+| 2b | Idle wake on claimable task, end to end | PASS | task #1 `target_host=hb` → beta claimed (`session:<beta>`), committed hello.txt on `live-hello` (84586bb), `task_done` summary; hub notice "[agent-mesh] task #1 done" delivered and acked to alpha |
+| 3 | `AGENTMESH_WORKER=off` | PASS | `hosts --sessions` shows `0502ce6c hb repoC [gamma] worker:off`; gamma stayed idle (no wake, no claim) although task #1 matched its host and repo; repoC untouched |
+| 4 | `task_add` replay | PASS | Two identical calls with `request_id=live-final-1`: `queued #1 …` then `already queued (same request_id) #1 …`; one task row |
+| 5 | `/exit` cleanup | PASS | "Exit and stop tasks" → beta `ended=true`; waiter gone; flock on `<id>.pid` held before, free after |
+| 6 | `kill -9` claude (no /exit) | PASS | waiter (ppid = Claude's background shell, grandparent = claude) exited **0.3 s** after the kill; lock free. The shell's SIGHUP likely ended it before the 2 s parent-watch tick (parent watch is unit-tested). Session stays registered until the alive window lapses (no SessionEnd) |
+
+Notes: hooks register a session ~1-2 s after the TUI appears (an immediate check saw 0 sessions). Invite output now prints the code on its own line for the stdin prompt.
