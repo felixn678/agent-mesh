@@ -1,6 +1,6 @@
 # Final delivery summary (lead)
 
-Date: 2026-10-16 · main pushed at `b47b1f0` · no release/tag created (user decision pending)
+Date: 2026-10-16 · main pushed at `2497b22` (CI green on Linux + macOS) · no release/tag created (user decision pending)
 
 ## What exists
 - Hub (Go, SQLite WAL, REST + MCP) with fenced leases, idempotent claim/add/finish, reaper, messaging inbox with long-poll wake + ack.
@@ -19,6 +19,7 @@ Date: 2026-10-16 · main pushed at `b47b1f0` · no release/tag created (user dec
 | Old DB files v1/v3/v5 upgraded by current code | pass |
 | Reviews: plan red-team (15), hub, CLI/MCP/onboard, daemon (×2), final whole-repo | all Critical/High fixed with regression tests |
 | gitleaks full history; infra-detail grep over full history | clean / 0 matches |
+| GitHub CI on `2497b22`: vet + race tests on ubuntu-latest AND macos-latest, cross-build, shellcheck, gitleaks | all green (first real-Mac run found test path assumptions + a `ps` PATH issue; both fixed) |
 
 ## Needs the user
 1. Tailscale on both machines (multi-host transport); then `agent-mesh up --listen <tailscale-ip>:8787`.
