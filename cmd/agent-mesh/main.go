@@ -19,6 +19,10 @@ import (
 const usage = `usage: agent-mesh <command> [args]
 
 commands:
+  up       set up and start the hub on this machine (config, tokens, services)
+  invite   mint an invite line for another machine (hub machine)
+  join     join a hub from an invite line (other machines)
+  doctor   check config, tokens, hub, auth and tools
   hub      run the hub server
   daemon   run the pull daemon on this host
   task     add/list/show/cancel/requeue tasks
@@ -55,6 +59,8 @@ func run(ctx context.Context, args []string) error {
 		return daemon.Run(ctx, rest)
 	case "task", "hosts", "inbox", "hook", "setup-claude":
 		return cli.Run(ctx, args)
+	case "up", "invite", "join", "doctor":
+		return runOnboard(ctx, args)
 	case "report":
 		return report.Run(ctx, rest)
 	case "token":

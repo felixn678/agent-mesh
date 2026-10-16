@@ -27,24 +27,31 @@ Design details: [docs/system-architecture.md](docs/system-architecture.md). Inst
 
 No remote exec, no SSH in code, no TLS or mDNS code, no tmux, no hub HA, no task priorities, no group messages. Multi-host traffic is plaintext HTTP and is only supported over Tailscale.
 
-## Quick start (Ubuntu, loopback)
+## Quick start
 
-Prereqs: Go 1.26+, git, gh, claude, gitleaks.
+Prereqs: git, gh, claude, gitleaks (`agent-mesh doctor` tells you what is missing). Build with `make build` (or `make cross`) and put `agent-mesh` on your PATH.
+
+On the hub machine:
 
 ```sh
-make test cross
-deploy/install.sh both            # copies binary, units, example configs; starts nothing
-cd ~/.config/agent-mesh
-agent-mesh token new --admin --out admin.token     # prints admin_token_hash line -> hub.toml
-agent-mesh token new --host <host-name> --out host.token       # -> [host_tokens]
-agent-mesh token new --session <host-name> --out session.token # -> [session_tokens]
-printf 'GH_TOKEN=<fine-grained PAT>\n' > gh.env && chmod 600 gh.env
-$EDITOR hub.toml daemon.toml      # replace every <placeholder>; add your repos
-loginctl enable-linger "$USER"
-systemctl --user daemon-reload
-systemctl --user enable --now agent-mesh-hub agent-mesh-daemon
-agent-mesh hosts
+agent-mesh up                      # config (0700), tokens, hub.toml, daemon.toml, user services
+agent-mesh setup-claude            # connect Claude Code sessions here
+agent-mesh doctor                  # green checks = ready
 ```
+
+`up` is idempotent: re-running keeps existing tokens and configs. It listens on `127.0.0.1:8787` and never binds a wildcard address. If Tailscale is present it prints the command to serve other machines (`agent-mesh up --listen <tailscale-ip>:8787`). Flags: `--listen`, `--name <host>` (default: short hostname), `--no-service`. On Linux run `loginctl enable-linger "$USER"` (hinted) so services survive logout and reboot.
+
+Add another machine (yours or a friend's, same tailnet):
+
+```sh
+agent-mesh invite <host-name>      # on the hub: prints one line, reloads the hub (SIGHUP, no restart)
+agent-mesh join <hub-url> <bundle> # on the new machine: paste that line
+agent-mesh setup-claude && agent-mesh doctor
+```
+
+The invite line contains the new machine's tokens: send it over a private channel only. `join` verifies the tokens against the hub before writing anything.
+
+Manual setup (tokens, units, editing `hub.toml` by hand) is still supported: see [docs/deployment-guide.md](docs/deployment-guide.md).
 
 CLI commands read the hub URL and token from your config; use the admin token for cancel/requeue and the morning report (see the deployment guide for wiring it via a gitignored `.envrc`).
 

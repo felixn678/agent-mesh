@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/felixn678/agent-mesh/internal/api"
 	"github.com/felixn678/agent-mesh/internal/config"
@@ -14,6 +15,7 @@ import (
 const adminName = "admin"
 
 type authenticator struct {
+	mu       sync.RWMutex // guards the tables below; replace swaps them on SIGHUP
 	admin    []byte
 	hosts    map[string][]byte
 	sessions map[string][]byte
@@ -41,6 +43,8 @@ func newAuthenticator(cfg Config) *authenticator {
 // hash in constant time per comparison, without early exit.
 func (a *authenticator) identify(token string) (api.Principal, bool) {
 	sum := sha256.Sum256([]byte(token))
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	var p api.Principal
 	found := false
 	if len(a.admin) == sha256.Size && subtle.ConstantTimeCompare(sum[:], a.admin) == 1 {
