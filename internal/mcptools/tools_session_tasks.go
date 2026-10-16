@@ -53,8 +53,15 @@ func (t tools) addSessionTaskTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{Name: "task_release", Description: "Give your claimed task back unworked."}, t.taskRelease)
 }
 
-func (t tools) taskClaim(ctx context.Context, _ *mcp.CallToolRequest, in InboxIn) (*mcp.CallToolResult, any, error) {
-	c, err := t.st.ClaimForSession(ctx, t.p.Host, in.Session)
+// ClaimIn names the claiming session. RequestID makes a retried claim (after
+// an error or timeout) return the task the first attempt already took.
+type ClaimIn struct {
+	Session   string `json:"session"`
+	RequestID string `json:"request_id,omitempty" jsonschema:"any token; reuse it when retrying a failed claim"`
+}
+
+func (t tools) taskClaim(ctx context.Context, _ *mcp.CallToolRequest, in ClaimIn) (*mcp.CallToolResult, any, error) {
+	c, err := t.st.ClaimForSessionRequest(ctx, t.p.Host, in.Session, api.SessionClaimRequest{RequestID: in.RequestID})
 	if err != nil {
 		return storeErr(err), nil, nil
 	}

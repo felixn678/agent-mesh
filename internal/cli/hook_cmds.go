@@ -50,13 +50,22 @@ func runHook(ctx context.Context, std cmdIO, args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, hookTimeout)
 	defer cancel()
-	out, err := hookEvent(ctx, std.in, args[0])
+	out, h, err := hookEvent(ctx, std.in, args[0])
 	if err != nil {
 		logHook(args[0], err)
 		return nil
 	}
-	if out != nil {
-		_, _ = std.out.Write(out)
+	if out == nil {
+		return nil
+	}
+	if _, err := std.out.Write(out); err != nil {
+		logHook(args[0], err)
+		return nil // not acked: the messages are delivered again next time
+	}
+	if len(h.shown) > 0 {
+		if _, err := h.c.AckMessages(ctx, h.in.SessionID, h.shown); err != nil {
+			logHook(args[0]+" ack", err) // at-least-once: they will show again
+		}
 	}
 	return nil
 }
@@ -71,57 +80,65 @@ func mcpHeaders(std cmdIO) error {
 	return json.NewEncoder(std.out).Encode(map[string]string{"Authorization": "Bearer " + tok})
 }
 
-// hookEvent handles one event and returns the exact stdout bytes (nil = none).
-func hookEvent(ctx context.Context, stdin io.Reader, event string) ([]byte, error) {
+// hookEvent handles one event and returns the exact stdout bytes (nil = none)
+// plus the hook state holding the message ids to ack once they are written.
+func hookEvent(ctx context.Context, stdin io.Reader, event string) ([]byte, *hookCtx, error) {
 	var in hookInput
 	if err := json.NewDecoder(io.LimitReader(stdin, 1<<20)).Decode(&in); err != nil {
-		return nil, fmt.Errorf("decode hook input: %w", err)
+		return nil, nil, fmt.Errorf("decode hook input: %w", err)
 	}
 	if !api.ValidSessionID(in.SessionID) {
-		return nil, fmt.Errorf("invalid session id %q", in.SessionID)
+		return nil, nil, fmt.Errorf("invalid session id %q", in.SessionID)
 	}
 	c, err := sessionClient()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	h := hookCtx{ctx: ctx, c: c, in: in, waiters: waitersDir()}
+	h := &hookCtx{ctx: ctx, c: c, in: in, waiters: waitersDir()}
+	var out []byte
 	switch event {
 	case "session-start":
-		return h.sessionStart()
+		out, err = h.sessionStart()
 	case "prompt":
-		return h.prompt()
+		out, err = h.prompt()
 	case "stop":
-		return h.stop()
+		out, err = h.stop()
 	case "session-end":
-		return nil, c.EndSession(ctx, in.SessionID)
+		err = c.EndSession(ctx, in.SessionID)
+	default:
+		err = fmt.Errorf("unknown hook event %q", event)
 	}
-	return nil, fmt.Errorf("unknown hook event %q", event)
+	return out, h, err
 }
 
 type hookCtx struct {
 	ctx     context.Context
 	c       *client.Client
 	in      hookInput
-	waiters string // pid/marker dir; "" when the state dir is unknown
+	waiters string  // pid/marker dir; "" when the state dir is unknown
+	shown   []int64 // message ids rendered into the output, acked after it is written
 }
 
 // register refreshes the session; repo is sent only at session start (an
 // empty repo keeps the stored one).
-func (h hookCtx) register(repo string) (api.Session, error) {
+func (h *hookCtx) register(repo string) (api.Session, error) {
 	return h.c.RegisterSession(h.ctx, api.RegisterSessionRequest{
 		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo})
 }
 
-// unread consumes and renders the session's unread messages ("" if none).
-func (h hookCtx) unread() (string, error) {
-	msgs, err := h.c.Inbox(h.ctx, h.in.SessionID, true)
+// unread renders the session's unread messages ("" if none) without marking
+// them read; the rendered ids are acked after the output is written.
+func (h *hookCtx) unread() (string, error) {
+	msgs, err := h.c.Inbox(h.ctx, h.in.SessionID, false)
 	if err != nil || len(msgs) == 0 {
 		return "", err
 	}
-	return format.Messages(msgs, sendersOf(h.ctx, h.c)), nil
+	text, n := format.Messages(msgs, sendersOf(h.ctx, h.c))
+	h.shown = format.IDs(msgs[:n])
+	return text, nil
 }
 
-func (h hookCtx) sessionStart() ([]byte, error) {
+func (h *hookCtx) sessionStart() ([]byte, error) {
 	s, err := h.register(gitRemote(h.ctx, h.in.Cwd))
 	if err != nil {
 		return nil, err
@@ -141,7 +158,7 @@ func (h hookCtx) sessionStart() ([]byte, error) {
 	return contextOutput("SessionStart", text)
 }
 
-func (h hookCtx) prompt() ([]byte, error) {
+func (h *hookCtx) prompt() ([]byte, error) {
 	if _, err := h.register(""); err != nil {
 		return nil, err
 	}
@@ -158,7 +175,7 @@ func (h hookCtx) prompt() ([]byte, error) {
 // stop extends leases of tasks this session holds, then blocks the stop once to deliver unread messages, or once per waiter
 // death to ask for a restart. stop_hook_active (a stop already continued by
 // a hook) always allows, so a session can never loop.
-func (h hookCtx) stop() ([]byte, error) {
+func (h *hookCtx) stop() ([]byte, error) {
 	if _, err := h.register(""); err != nil {
 		return nil, err
 	}

@@ -19,7 +19,11 @@ func runTask(ctx context.Context, std cmdIO, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: task add|list|get|cancel|requeue")
 	}
-	c, err := cliClient()
+	newClient := cliClient
+	if args[0] == "cancel" || args[0] == "requeue" {
+		newClient = adminClient
+	}
+	c, err := newClient()
 	if err != nil {
 		return err
 	}

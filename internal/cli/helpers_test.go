@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"github.com/felixn678/agent-mesh/internal/cli/hubenv"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,11 +28,12 @@ func testEnv(t *testing.T, h *hubtest.Hub) string {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("AGENTMESH_TOKEN", "")
+	t.Setenv("AGENTMESH_SESSION_TOKEN", "")
 	t.Setenv("AGENTMESH_HOOKS", "")
 	t.Setenv("AGENTMESH_SESSION_NAME", "")
 	if h != nil {
 		t.Setenv("AGENTMESH_URL", h.URL)
-		p, err := configFile(sessionTokenFile)
+		p, err := hubenv.File(hubenv.SessionTokenFile)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -48,7 +49,7 @@ func runInbox(ctx context.Context, std cmdIO, args []string, o waitOpts) error {
 		return err
 	}
 	if !*wait {
-		msgs, err := c.Inbox(ctx, *session, true)
+		msgs, err := c.Inbox(ctx, *session, false)
 		if err != nil {
 			return err
 		}
@@ -56,8 +57,8 @@ func runInbox(ctx context.Context, std cmdIO, args []string, o waitOpts) error {
 			fmt.Fprintln(std.out, "no unread messages")
 			return nil
 		}
-		fmt.Fprint(std.out, format.Messages(msgs, sendersOf(ctx, c)))
-		return nil
+		text, n := format.Messages(msgs, sendersOf(ctx, c))
+		return printThenAck(ctx, std, c, *session, text, msgs[:n])
 	}
 	dir := waitersDir()
 	if dir == "" {
@@ -91,11 +92,11 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 		if poll < time.Second {
 			poll = time.Second // the hub's wait granularity
 		}
-		resp, err := c.InboxWaitClaimable(ctx, id, true, poll)
+		resp, err := c.InboxWaitClaimable(ctx, id, false, poll)
 		claimWake := err == nil && claimWakeDue(dir, id, resp.ClaimableCount)
 		if err == nil && len(resp.Messages) == 0 && resp.ClaimableCount > 0 && !claimWake {
 			var msgs []api.Message
-			msgs, err = c.InboxWait(ctx, id, true, max(min(o.cooldownPoll, poll), time.Second)) // announced work cooling down: messages only
+			msgs, err = c.InboxWait(ctx, id, false, max(min(o.cooldownPoll, poll), time.Second)) // announced work cooling down: messages only
 			resp = api.InboxResponse{Messages: msgs}
 		}
 		if ctx.Err() != nil {
@@ -104,13 +105,13 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 		var he *client.HTTPError
 		switch {
 		case err == nil && (len(resp.Messages) > 0 || claimWake):
-			fmt.Fprint(std.out, format.Messages(resp.Messages, sendersOf(ctx, c)))
+			text, n := format.Messages(resp.Messages, sendersOf(ctx, c))
 			if claimWake {
 				markClaimWake(dir, id, resp.ClaimableCount)
-				fmt.Fprint(std.out, claimInstructions(id, resp.ClaimableCount))
+				text += claimInstructions(id, resp.ClaimableCount)
 			}
-			fmt.Fprintf(std.out, "\n[agentmesh] after handling, restart the waiter: `%s` with run_in_background.\n", waiterCommand(id))
-			return nil
+			text += fmt.Sprintf("\n[agentmesh] after handling, restart the waiter: `%s` with run_in_background.\n", waiterCommand(id))
+			return printThenAck(ctx, std, c, id, text, resp.Messages[:n])
 		case err == nil:
 			backoff = o.backoffMin
 			continue
@@ -130,4 +131,17 @@ func waitLoop(ctx context.Context, std cmdIO, c *client.Client, dir, id string, 
 		}
 		backoff = min(backoff*2, o.backoffMax)
 	}
+}
+
+// printThenAck writes text and only then acks the messages it rendered, so a
+// crash or failed write leaves them unread for the next delivery
+// (at-least-once). A failed ack is not an error: they show up again.
+func printThenAck(ctx context.Context, std cmdIO, c *client.Client, id, text string, shown []api.Message) error {
+	if _, err := io.WriteString(std.out, text); err != nil {
+		return err
+	}
+	if len(shown) > 0 {
+		_, _ = c.AckMessages(ctx, id, format.IDs(shown))
+	}
+	return nil
 }

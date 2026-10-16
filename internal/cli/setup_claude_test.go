@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"github.com/felixn678/agent-mesh/internal/cli/hubenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,7 +164,7 @@ func TestSetupClaudeSymlinkMissingInvalidAndForce(t *testing.T) {
 
 func TestSetupClaudeRequiresSessionToken(t *testing.T) {
 	e, _, _ := setupFixture(t)
-	p, _ := configFile(sessionTokenFile)
+	p, _ := hubenv.File(hubenv.SessionTokenFile)
 	_ = os.Remove(p)
 	var out syncBuf
 	if err := setupClaude(bg, cmdIO{in: strings.NewReader(""), out: &out, err: &out}, e, setupFlags{}); err == nil ||

@@ -200,3 +200,21 @@ func TestMCPHeadersPrintsSessionBearer(t *testing.T) {
 		t.Fatalf("%q %v", out, err)
 	}
 }
+
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, os.ErrClosed }
+
+func TestHookAcksOnlyAfterOutputIsWritten(t *testing.T) {
+	h := startHub(t)
+	testEnv(t, h)
+	hook(t, "session-start", "hook_session_start.json")
+	peer(t, h, "keep me")
+	err := run(bg, cmdIO{in: strings.NewReader(fixture(t, "hook_prompt.json")), out: failWriter{}, err: failWriter{}}, []string{"hook", "prompt"})
+	if err != nil || unreadCount(t, h) != 1 {
+		t.Fatalf("failed write must leave the message unread (err=%v unread=%d)", err, unreadCount(t, h))
+	}
+	if ho, _ := hook(t, "prompt", "hook_prompt.json"); !strings.Contains(ho.HookSpecificOutput.AdditionalContext, "> keep me") || unreadCount(t, h) != 0 {
+		t.Fatalf("redelivery: %+v", ho)
+	}
+}

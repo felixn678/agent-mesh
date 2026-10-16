@@ -104,14 +104,20 @@ func (t tools) inbox(ctx context.Context, _ *mcp.CallToolRequest, in InboxIn) (*
 	if !t.p.Session {
 		return errResult("session token required"), nil, nil
 	}
-	msgs, err := t.st.Inbox(ctx, t.owner(), in.Session, true)
+	msgs, err := t.st.Inbox(ctx, t.owner(), in.Session, false)
 	if err != nil {
 		return storeErr(err), nil, nil
 	}
 	if len(msgs) == 0 {
 		return textResult("no unread messages"), nil, nil
 	}
-	return textResult(format.Messages(msgs, t.senders(ctx))), nil, nil
+	text, n := format.Messages(msgs, t.senders(ctx))
+	// Ack only what was rendered, as late as the tool can (just before the
+	// result is returned).
+	if _, err := t.st.AckMessages(ctx, t.owner(), api.AckMessagesRequest{Session: in.Session, IDs: format.IDs(msgs[:n])}); err != nil {
+		return storeErr(err), nil, nil
+	}
+	return textResult(text), nil, nil
 }
 
 // senders indexes all sessions by id for message headers (best effort).

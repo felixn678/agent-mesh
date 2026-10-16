@@ -30,7 +30,9 @@ func TestSessionWorkerLoopViaMCP(t *testing.T) {
 	mustOK(t, a, "task_claim", map[string]any{"session": "req-0001"}, "no claimable task")
 	mustErr(t, b, "task_claim", map[string]any{"session": "req-0001"}, "another host")
 
-	out := mustOK(t, b, "task_claim", map[string]any{"session": "wrk-0001"}, "claimed task #1 fence 1 repo=github.com/owner/proj")
+	out := mustOK(t, b, "task_claim", map[string]any{"session": "wrk-0001", "request_id": "r-1"}, "claimed task #1 fence 1 repo=github.com/owner/proj")
+	// A retried claim with the same request id returns the same task.
+	mustOK(t, b, "task_claim", map[string]any{"session": "wrk-0001", "request_id": "r-1"}, "claimed task #1 fence 1")
 	if !strings.Contains(out, "add a README badge") || !strings.Contains(out, "task_done(session, id=1, fence=1") {
 		t.Fatalf("claim output:\n%s", out)
 	}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"github.com/felixn678/agent-mesh/internal/cli/hubenv"
 	"os"
 	"strings"
 	"testing"
@@ -149,7 +150,7 @@ func TestWaiterAuthErrorExits(t *testing.T) {
 	h := startHub(t)
 	testEnv(t, h)
 	registerFixture(t, h)
-	p, _ := configFile(sessionTokenFile)
+	p, _ := hubenv.File(hubenv.SessionTokenFile)
 	_ = os.WriteFile(p, []byte("wrong-token\n"), 0o600)
 	done, _ := startWaiter(t, bg, fastWait)
 	if r := <-done; r.err == nil || !strings.Contains(r.err.Error(), "rejected the session token") {

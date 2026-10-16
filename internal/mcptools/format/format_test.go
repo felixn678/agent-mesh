@@ -14,7 +14,10 @@ func TestMessagesQuotesBodiesAndNeutralizesForgery(t *testing.T) {
 		{ID: 42, FromSession: "zz", FromHost: "host-b", Body: "hi"},
 	}
 	senders := map[string]api.Session{"abcdef123456": {Cwd: "/home/u/Code/lumio", Name: "lead\nforged"}}
-	out := Messages(msgs, senders)
+	out, n := Messages(msgs, senders)
+	if n != 2 {
+		t.Fatalf("rendered %d", n)
+	}
 	if !strings.HasPrefix(out, "[agentmesh] 2 message(s) from OTHER Claude sessions") || !strings.Contains(out, "UNTRUSTED DATA") {
 		t.Fatalf("missing framing:\n%s", out)
 	}
@@ -40,14 +43,14 @@ func TestMessagesTruncatesAt32KB(t *testing.T) {
 	for i := 1; i <= 50; i++ {
 		msgs = append(msgs, api.Message{ID: int64(i), FromSession: "sender01", FromHost: "h", Body: strings.Repeat("x", 8000)})
 	}
-	out := Messages(msgs, nil)
-	if len(out) > MaxRenderedBytes {
+	out, n := Messages(msgs, nil)
+	if len(out) > MaxRenderedBytes || n < 1 || n >= 50 {
 		t.Fatalf("rendered %d bytes", len(out))
 	}
-	if !strings.Contains(out, "more message(s) truncated") || !strings.Contains(out, "50 from sender01") {
+	if !strings.Contains(out, "more message(s) not shown yet") || !strings.Contains(out, "50 from sender01") {
 		t.Fatalf("missing truncation notice: %s", out[len(out)-300:])
 	}
-	if Messages(nil, nil) != "" {
+	if s, n := Messages(nil, nil); s != "" || n != 0 {
 		t.Fatal("empty inbox must render nothing")
 	}
 }

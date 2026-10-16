@@ -7,14 +7,14 @@
 | hub (`agent-mesh hub`) | single owner of state. SQLite (WAL, `synchronous=FULL`, one connection). REST `/api/v1`, MCP `/mcp` (Streamable HTTP, stateless), reaper |
 | daemon (`agent-mesh daemon`) | per host, pull only. Samples load, claims a task when healthy, runs one `claude -p` worker, publishes, reports |
 | CLI (`task`, `hosts`, `report`, `token`) | human surface over REST |
-| hooks and waiter (`hook`, `inbox --wait`) | register interactive sessions, deliver inbox messages |
+| hooks and waiter (`hook`, `inbox --wait`) | register interactive sessions (with their git remote), deliver inbox messages, wake idle sessions for claimable work, extend held leases at Stop |
 | `setup-claude` | opt-in user-scope MCP and additive hooks |
 
 ## Data flow
 
 Task: client (CLI or MCP `task_add`) -> hub queue -> daemon claim (host capabilities sent; hub filters on repo, permission mode, profile, budget) -> worktree from the daemon's own bare clone -> `claude -p` -> heartbeats -> publish -> `complete` -> report.
 
-Messages: session hooks register the session on start and refresh on prompt. `send` stores a message in the recipient's inbox. Delivery: `UserPromptSubmit` injection, one `Stop` block per stop chain, or the idle waiter's long-poll (up to 50 s per request) which exits on arrival and wakes the session.
+Messages: session hooks register the session on start and refresh on prompt. `send` stores a message in the recipient's inbox. Delivery: `UserPromptSubmit` injection, one `Stop` block per stop chain, or the idle waiter's long-poll (up to 50 s per request) which exits on arrival and wakes the session. Clients fetch without marking read and ack only what they showed (at least once).
 
 ## Lease, fence, idempotency
 
