@@ -89,3 +89,33 @@ func TestConfigRejectsReusedTokenHash(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Stopping the hub while it still waits for its address is a clean shutdown
+// (exit 0), not an error a service manager would treat as a crash.
+func TestRunStoppedDuringBindRetryReturnsNil(t *testing.T) {
+	blocker, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Close()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hub.toml")
+	body := "listen = \"" + blocker.Addr().String() + "\"\ndb_path = \"" + filepath.Join(dir, "hub.db") +
+		"\"\nadmin_token_hash = \"" + config.HashToken("admin") + "\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- hub.Run(ctx, []string{"--config", path}) }()
+	time.Sleep(200 * time.Millisecond) // inside the bind retry loop
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run after cancel during bind retry: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not stop")
+	}
+}

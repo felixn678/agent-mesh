@@ -66,6 +66,9 @@ func Run(ctx context.Context, args []string) error {
 	defer db.Close()
 	ln, err := ListenWithRetry(ctx, cfg.Listen, bindRetryEvery, bindRetryMax)
 	if err != nil {
+		if ctx.Err() != nil { // stopped while waiting for the address: a clean shutdown
+			return nil
+		}
 		return err
 	}
 	defer ln.Close()

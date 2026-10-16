@@ -14,14 +14,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/felixn678/agent-mesh/internal/client"
 	"github.com/felixn678/agent-mesh/internal/config"
 )
 
 // DefaultHubURL is the v1 loopback hub.
-const DefaultHubURL = "http://127.0.0.1:8787"
+const DefaultHubURL = config.DefaultHubURL
 
 // Token file names in the config dir.
 const (
@@ -29,33 +27,18 @@ const (
 	SessionTokenFile = "session.token"
 )
 
-// HubURL resolves the hub base URL.
+// HubURL resolves the hub base URL via config.HubURL (one resolver shared
+// with report and doctor).
 func HubURL() string {
-	if u := os.Getenv("AGENTMESH_URL"); u != "" {
-		return u
-	}
-	for _, name := range []string{"client.toml", "daemon.toml"} {
-		if u := readHubURL(name); u != "" {
+	dir, err := config.DefaultDir()
+	if err != nil {
+		if u := os.Getenv("AGENTMESH_URL"); u != "" {
 			return u
 		}
+		return config.DefaultHubURL
 	}
-	return DefaultHubURL
-}
-
-// readHubURL reads only hub_url, tolerating other keys (the daemon and the
-// onboarding commands own those files' schemas).
-func readHubURL(name string) string {
-	p, err := File(name)
-	if err != nil {
-		return ""
-	}
-	var c struct {
-		HubURL string `toml:"hub_url"`
-	}
-	if _, err := toml.DecodeFile(p, &c); err != nil {
-		return ""
-	}
-	return c.HubURL
+	u, _ := config.HubURL(dir)
+	return u
 }
 
 // File returns <config-dir>/name.
