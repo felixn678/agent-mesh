@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/felixn678/agent-mesh/internal/config"
+	"github.com/felixn678/agent-mesh/internal/logfile"
 	"github.com/felixn678/agent-mesh/internal/store"
 )
 
@@ -59,8 +60,16 @@ func Run(ctx context.Context, args []string) error {
 		return err
 	}
 	path := fs.String("config", filepath.Join(dir, "hub.toml"), "path to hub.toml")
+	logPath := fs.String("log-file", "", "write logs to this file, rotated at 10 MB x 3 (for launchd; systemd uses the journal)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *logPath != "" {
+		lf, err := logfile.Setup(*logPath)
+		if err != nil {
+			return err
+		}
+		defer lf.Close()
 	}
 	cfg, err := LoadConfig(*path)
 	if err != nil {

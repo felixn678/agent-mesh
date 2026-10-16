@@ -92,7 +92,7 @@ Where things live (note the space in the config path: quote it in shell commands
 | Config, tokens | `~/Library/Application Support/agent-mesh/` (0700; files 0600) |
 | Daemon state (clones, worktrees, journals) | `~/.local/share/agent-mesh/` |
 | Service definitions | `~/Library/LaunchAgents/com.agentmesh.daemon.plist` (and `com.agentmesh.hub.plist` if the hub runs on the Mac) |
-| Service logs | `~/Library/Logs/agent-mesh/daemon.log`, `hub.log` |
+| Service logs | `~/Library/Logs/agent-mesh/daemon.log`, `hub.log` (written by the process, rotated at 10 MB, 3 old files kept); `*.stderr.log` holds only startup failures |
 
 Things that differ from Linux:
 
@@ -100,7 +100,7 @@ Things that differ from Linux:
 - **Sleep stops work.** A sleeping Mac stops its daemon and sessions; leases expire and the hub hands the work to another machine. For overnight work on power: System Settings → Battery/Energy → "Prevent automatic sleeping when the display is off", or run `caffeinate -s` in a terminal. Closing the lid sleeps the Mac unless it is on power with an external display.
 - **Claude login for the daemon.** `claude` keeps its login in the login Keychain, which a LaunchAgent can normally read after you log in. If `daemon.log` shows "not logged in", run `claude setup-token` in Terminal, put `CLAUDE_CODE_OAUTH_TOKEN=<token>` in a 0600 file (for example `~/Library/Application Support/agent-mesh/claude.env`) and set `claude_env_file` to it in `daemon.toml`. The token is long-lived: treat it like a password.
 - **GitHub login for the daemon.** Prefer `gh.env` with `GH_TOKEN=<fine-grained PAT>` next to `daemon.toml`; a Keychain-backed `gh` login can prompt for access, which nobody answers at night.
-- **Logs are not rotated** by launchd. Truncate occasionally: `: > ~/Library/Logs/agent-mesh/daemon.log`.
+- **Logs.** launchd never rotates `StandardOutPath`, so the LaunchAgents run `agent-mesh daemon|hub --log-file ~/Library/Logs/agent-mesh/<name>.log`: the process rotates its own log at 10 MB and keeps `.1`..`.3`. The `<name>.stderr.log` that launchd writes only collects startup failures and is emptied by the process once it passes 1 MB. On Linux, systemd sends output to the journal, which journald rotates (`journalctl --user -u agent-mesh-daemon`). `--log-file` works for manual runs too.
 - **Apple Silicon:** use the arm64 build (the installer picks it even from a Rosetta terminal; check with `file "$(command -v agent-mesh)"`).
 - Control the service: `launchctl print gui/$(id -u)/com.agentmesh.daemon | grep state`, restart `launchctl kickstart -k gui/$(id -u)/com.agentmesh.daemon`, stop `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
 

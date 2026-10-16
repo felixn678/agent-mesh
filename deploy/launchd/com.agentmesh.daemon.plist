@@ -8,6 +8,8 @@
   <array>
     <string>__HOME__/.local/bin/agent-mesh</string>
     <string>daemon</string>
+    <string>--log-file</string>
+    <string>__HOME__/Library/Logs/agent-mesh/daemon.log</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -22,9 +24,11 @@
   <integer>10</integer>
   <key>Umask</key>
   <integer>63</integer>
+  <!-- launchd never rotates these: the daemon writes its own rotated log
+       (daemon.log, 10 MB x 3); this file only catches startup failures. -->
   <key>StandardOutPath</key>
-  <string>__HOME__/Library/Logs/agent-mesh/daemon.log</string>
+  <string>__HOME__/Library/Logs/agent-mesh/daemon.stderr.log</string>
   <key>StandardErrorPath</key>
-  <string>__HOME__/Library/Logs/agent-mesh/daemon.log</string>
+  <string>__HOME__/Library/Logs/agent-mesh/daemon.stderr.log</string>
 </dict>
 </plist>
