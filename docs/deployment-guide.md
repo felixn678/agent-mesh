@@ -80,6 +80,45 @@ The script never overwrites existing configs, never creates secrets, never start
 
 Units use `Restart=on-failure`, `RestartSec=10`, `StartLimitIntervalSec=0` so a late network never exhausts the restart budget. The daemon unit sets an explicit `PATH` (`~/.local/bin`, `~/go/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`; systemd does not read your shell profile) and `KillMode=mixed` with `TimeoutStopSec=60` so it releases leases on stop. Validate edits with `systemd-analyze --user verify <unit>`.
 
+### macOS
+
+Where things live (note the space in the config path: quote it in shell commands):
+
+| What | Path |
+|---|---|
+| Config, tokens | `~/Library/Application Support/agent-mesh/` (0700; files 0600) |
+| Daemon state (clones, worktrees, journals) | `~/.local/share/agent-mesh/` |
+| Service definitions | `~/Library/LaunchAgents/com.agentmesh.daemon.plist` (and `com.agentmesh.hub.plist` if the hub runs on the Mac) |
+| Service logs | `~/Library/Logs/agent-mesh/daemon.log`, `hub.log` |
+
+Things that differ from Linux:
+
+- **Services need a desktop login.** LaunchAgents run in your `gui/<uid>` launchd domain, which exists only while you are logged in to the Mac (it keeps running with the screen locked). `up`/`join` over a plain SSH session fail with a clear message; log in on the Mac once, or pass `--no-service`. Services start at login, not at boot.
+- **Sleep stops work.** A sleeping Mac stops its daemon and sessions; leases expire and the hub hands the work to another machine. For overnight work on power: System Settings → Battery/Energy → "Prevent automatic sleeping when the display is off", or run `caffeinate -s` in a terminal. Closing the lid sleeps the Mac unless it is on power with an external display.
+- **Claude login for the daemon.** `claude` keeps its login in the login Keychain, which a LaunchAgent can normally read after you log in. If `daemon.log` shows "not logged in", run `claude setup-token` in Terminal, put `CLAUDE_CODE_OAUTH_TOKEN=<token>` in a 0600 file (for example `~/Library/Application Support/agent-mesh/claude.env`) and set `claude_env_file` to it in `daemon.toml`. The token is long-lived: treat it like a password.
+- **GitHub login for the daemon.** Prefer `gh.env` with `GH_TOKEN=<fine-grained PAT>` next to `daemon.toml`; a Keychain-backed `gh` login can prompt for access, which nobody answers at night.
+- **Logs are not rotated** by launchd. Truncate occasionally: `: > ~/Library/Logs/agent-mesh/daemon.log`.
+- **Apple Silicon:** use the arm64 build (the installer picks it even from a Rosetta terminal; check with `file "$(command -v agent-mesh)"`).
+- Control the service: `launchctl print gui/$(id -u)/com.agentmesh.daemon | grep state`, restart `launchctl kickstart -k gui/$(id -u)/com.agentmesh.daemon`, stop `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
+
+#### Mac manual test checklist
+
+Run once after joining the Mac; each step says what "good" looks like.
+
+1. `agent-mesh version` prints the release; `file "$(command -v agent-mesh)"` says `arm64` on Apple Silicon.
+2. On the hub: `agent-mesh invite <mac-name>`. On the Mac: `agent-mesh join <hub-url>` and paste the code (it is not echoed) → join reports both tokens verified.
+3. `launchctl print gui/$(id -u)/com.agentmesh.daemon | grep state` → `state = running`.
+4. `agent-mesh daemon --print-load` → sensible cores/RAM/CPU model (for example `Apple M2`) and slots (8 GB RAM → 1 slot).
+5. `agent-mesh doctor` → all ✓ (hub reachable, session/host token kinds, `claude auth status`, `gh auth status`, service PATH contains claude).
+6. On the hub: `agent-mesh hosts` lists the Mac with its hardware line and no `unhealthy`.
+7. Re-run `agent-mesh join <hub-url>` with a fresh invite → no duplicate service (`launchctl list | grep agentmesh` shows one daemon).
+8. `shasum -a 256 ~/.claude/settings.json`, then `agent-mesh setup-claude --dry-run`, `agent-mesh setup-claude`; open Claude in a project repo: the `sessions` tool lists sessions on both machines; send a message each way.
+9. From a session on the Ubuntu machine: queue a task targeted at the Mac in the same repo ("add a task for `<mac-name>`: create hello.txt with hi and commit"). An idle Mac session in that repo wakes, does it and the requester gets the result.
+10. Crash test: while a daemon task runs, `launchctl kill SIGKILL gui/$(id -u)/com.agentmesh.daemon` → launchd restarts it within ~10 s; the orphaned `claude` is killed and the task released (`agent-mesh task get <id>`).
+11. Sleep test: start a long task on the Mac, sleep the Mac for 10 minutes, wake it → the task finishes on the Mac or on another machine, never twice (one PR at most).
+12. Reboot, log in, wait a minute → step 3 again shows running.
+13. `agent-mesh setup-claude --uninstall` → `shasum -a 256 ~/.claude/settings.json` matches step 8.
+
 ### Admin token for the CLI
 
 `report`, `task cancel` and `task requeue` read `<config-dir>/admin.token` automatically on the hub machine. Keep the admin token out of shell-global env. This repo's `.mcp.json` expects the session token in `AGENTMESH_SESSION_TOKEN` (for example `export AGENTMESH_SESSION_TOKEN="$(cat ~/.config/agent-mesh/session.token)"` in a gitignored `.envrc`); the hub refuses admin and daemon tokens on session endpoints.
@@ -89,7 +128,7 @@ Units use `Restart=on-failure`, `RestartSec=10`, `StartLimitIntervalSec=0` so a 
 1. Install Tailscale on both hosts, same tailnet; note the hub's tailnet IP or MagicDNS name.
 2. Hub: `agent-mesh up --listen <tailnet-ip>:8787` (or set `listen` in `hub.toml` and restart the hub). The hub's own `daemon.toml` / `client.toml` `hub_url` must point to the same address. The hub retries bind, so tailscaled start order is fine.
 3. Optional firewall: `sudo ufw allow in on tailscale0 to any port 8787 proto tcp` (run by you, not by the scripts).
-4. Mac, fast path: `agent-mesh join <hub-url>`, then paste the code from the hub's `invite`. Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:8787"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
+4. Mac, fast path: `agent-mesh join <hub-url>` and paste the code printed by the hub's `invite` (see [macOS](#macos)). Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:8787"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
 5. On each host, `agent-mesh setup-claude`, then test a message in both directions.
 
 ## Claude integration check

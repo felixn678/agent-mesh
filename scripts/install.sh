@@ -32,6 +32,12 @@ x86_64 | amd64) arch=amd64 ;;
 arm64 | aarch64) arch=arm64 ;;
 *) die "unsupported CPU $(uname -m) (supported: amd64, arm64)" ;;
 esac
+# A shell running under Rosetta on Apple Silicon reports x86_64; install the
+# native arm64 build instead (the services launchd starts run natively).
+if [ "$os" = darwin ] && [ "$arch" = amd64 ] &&
+	[ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then
+	arch=arm64
+fi
 
 proto='=https'
 if [ -n "${AGENTMESH_DOWNLOAD_BASE:-}" ]; then
