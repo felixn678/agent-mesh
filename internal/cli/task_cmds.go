@@ -79,6 +79,12 @@ func taskAdd(ctx context.Context, std cmdIO, c *client.Client, args []string) er
 		}
 		spec.Prompt = string(b)
 	}
+	switch b := spec.MaxBudgetUSD; {
+	case b == 0:
+		return errors.New("task add: --budget <usd> is required: the most this task may spend, e.g. --budget 2")
+	case b < 0 || b > api.MaxBudgetUSD:
+		return fmt.Errorf("task add: --budget must be > 0 and <= %g (USD), got %g", api.MaxBudgetUSD, b)
+	}
 	if err := spec.WithDefaults().Validate(); err != nil {
 		return err
 	}
@@ -152,45 +158,9 @@ func taskByID(ctx context.Context, std cmdIO, c *client.Client, op string, args 
 		t, err = c.RequeueTask(ctx, id)
 	}
 	if err != nil {
-		return err
+		return adminHint(op, err)
 	}
 	fmt.Fprintln(std.out, map[string]string{"cancel": "cancelled", "requeue": "requeued"}[op]+" "+format.TaskLine(t))
-	return nil
-}
-
-func runHosts(ctx context.Context, std cmdIO, args []string) error {
-	fs := newFlags("hosts", std)
-	verbose := fs.Bool("verbose", false, "include cpu model and versions")
-	sessions := fs.Bool("sessions", false, "also list live Claude sessions (worker:off marks opted-out ones)")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	c, err := cliClient()
-	if err != nil {
-		return err
-	}
-	hosts, err := c.Hosts(ctx)
-	if err != nil {
-		return err
-	}
-	if len(hosts) == 0 {
-		fmt.Fprintln(std.out, "no hosts")
-	}
-	now := time.Now()
-	for _, h := range hosts {
-		fmt.Fprintln(std.out, format.HostLine(h, now, *verbose))
-	}
-	if !*sessions {
-		return nil
-	}
-	list, err := c.ListSessions(ctx, true)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(std.out, "sessions (%d live):\n", len(list))
-	for _, s := range list {
-		fmt.Fprintln(std.out, "  "+format.SessionLine(s, now))
-	}
 	return nil
 }
 

@@ -51,7 +51,7 @@ Once every machine has run `setup-claude`, you work in ordinary Claude Code sess
 4. The hub messages your original session. You see the result at your next prompt, when the current turn ends, or immediately if your session is idle with its waiter running.
 5. The untargeted task goes to whichever eligible taker asks first: an idle session of that repo on any machine, or a daemon whose `[repos]` allowlist contains the repo.
 
-Useful phrases inside a session: "list agentmesh sessions", "send `<name or id prefix>`: …", "show my inbox", "what is task 12 doing?". From a terminal: `agent-mesh task list`, `agent-mesh hosts`, `agent-mesh report`.
+Useful phrases inside a session: "list agentmesh sessions", "send `<name or id prefix>`: …", "show my inbox", "what is task 12 doing?". From a terminal: `agent-mesh task list`, `agent-mesh sessions`, `agent-mesh hosts`, `agent-mesh report`.
 
 Messages from other sessions are shown as untrusted data, never as instructions.
 
@@ -106,7 +106,8 @@ agent-mesh task add --repo <repo> --budget 2 --prompt-file - < spec.md   # promp
 agent-mesh task list [--state queued] [--since 16h]
 agent-mesh task get <id>
 agent-mesh task cancel|requeue <id>      # hub machine only (admin token)
-agent-mesh hosts [--verbose] [--sessions]   # --sessions: live Claude sessions, worker:off marks opted-out ones
+agent-mesh hosts [--verbose] [--sessions]   # daemon load per machine; --sessions also lists sessions
+agent-mesh sessions                        # live Claude sessions on every machine (worker:off = opted out)
 agent-mesh report [--since 16h] [--out <file>]
 agent-mesh task -h                       # each subcommand also takes -h
 ```
@@ -164,9 +165,9 @@ Non-goals: no remote exec, no SSH in code, no TLS or mDNS code, no tmux, no hub 
 - Services dead after reboot (Linux): check `loginctl show-user "$USER" | grep Linger` and the network autoconnect setting.
 - Hub bind fails: another process holds the port, or the Tailscale address is not up yet (the hub retries for 2 minutes).
 - Hook silent: expected when the hub is unreachable; check `agent-mesh doctor`.
-- `agent-mesh hosts` says `no hosts` although machines have joined: `hosts` lists machines whose **daemon** has reported load. Interactive sessions do not appear there; ask a session to "list agentmesh sessions" instead. Start the daemon (service, or `agent-mesh daemon`) if you want the machine listed.
-- `task cancel` / `task requeue` → `403 forbidden`: these need the admin token, which exists only on the hub machine. Run them there.
-- `task add` → `max_budget_usd must be > 0 and <= 100`: `--budget <usd>` is required (for example `--budget 2`).
+- `agent-mesh hosts` says `no daemon has reported load yet`: only daemons report load. It still names the machines that have live Claude sessions; `agent-mesh sessions` lists them. Start the daemon (service, or `agent-mesh daemon`) if you want load shown.
+- `task cancel` / `task requeue` → `needs the admin token`: run them on the hub machine (only it has `admin.token`).
+- `task add` → `--budget <usd> is required`: every task carries a spending cap (for example `--budget 2`, at most 100).
 - `doctor` warns `service hub: not running` while the hub works: you started it by hand (`up --no-service` + `agent-mesh hub`); the warning is about the service only. `hub reachable` is what matters.
 - Hooks do nothing after moving the binary: hooks and services store its absolute path. Re-run `agent-mesh setup-claude` (and `up`/`join` for services). Keep the binary in a directory without spaces.
 

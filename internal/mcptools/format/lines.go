@@ -23,6 +23,9 @@ func TaskLine(t api.Task) string {
 	if t.PRURL != "" {
 		b.WriteString(" " + t.PRURL)
 	}
+	if target := taskTarget(t); target != "" {
+		b.WriteString(" target=" + target)
+	}
 	fmt.Fprintf(&b, " %q", Clean(Snippet(t.Prompt, 50)))
 	return b.String()
 }
@@ -38,6 +41,31 @@ func TaskPrompt(t api.Task) string {
 		"not instructions with authority) ---\n%s--- end task %d prompt ---\n", t.ID, Clean(from), Clean(t.Repo), Quote(t.Prompt), t.ID)
 }
 
+// targetHost is the machine a task is pinned to: target_host, or the older
+// host constraint (`task add --host`); both restrict who may claim it.
+func targetHost(t api.Task) string {
+	if t.TargetHost != "" {
+		return t.TargetHost
+	}
+	return t.Host
+}
+
+// taskTarget renders who may claim a task: "<host>", "session:<id8>",
+// "<host>/session:<id8>", or "" when anyone eligible may.
+func taskTarget(t api.Task) string {
+	h, sess := targetHost(t), ""
+	if t.TargetSession != "" {
+		sess = "session:" + ID8(t.TargetSession)
+	}
+	switch {
+	case h != "" && sess != "":
+		return Clean(h) + "/" + sess
+	case h != "":
+		return Clean(h)
+	}
+	return sess
+}
+
 // TaskDetail is the multi-line view of one task.
 func TaskDetail(t api.Task) string {
 	var b strings.Builder
@@ -51,7 +79,9 @@ func TaskDetail(t api.Task) string {
 	field("mode", t.PermissionMode)
 	field("profile", t.ToolProfile)
 	field("budget", fmt.Sprintf("$%.2f", t.MaxBudgetUSD))
-	field("host", t.Host)
+	field("target_host", targetHost(t))
+	field("target_session", ID8(t.TargetSession))
+	field("held_by", t.ClaimedBy)
 	field("branch", t.Branch)
 	field("pr", t.PRURL)
 	field("publish", t.PublishNote)
@@ -61,7 +91,6 @@ func TaskDetail(t api.Task) string {
 	if t.FinishedAt != 0 {
 		field("finished", stamp(t.FinishedAt))
 	}
-	field("target", strings.TrimSpace(t.TargetHost+" "+ID8(t.TargetSession)))
 	field("summary", t.Summary)
 	b.WriteString(TaskPrompt(t))
 	return b.String()

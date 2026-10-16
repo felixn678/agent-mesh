@@ -59,7 +59,7 @@ func TestTaskCommandsAgainstHub(t *testing.T) {
 func TestHostsCommand(t *testing.T) {
 	h := startHub(t)
 	testEnv(t, h)
-	if out, _, err := runCLI(t, "", "hosts"); err != nil || out != "no hosts\n" {
+	if out, _, err := runCLI(t, "", "hosts"); err != nil || !strings.HasPrefix(out, "no daemon has reported load yet") {
 		t.Fatalf("%q %v", out, err)
 	}
 	if err := h.Host("host-a").ReportLoad(bg, api.HostLoad{Cores: 8, RAMGB: 8, Slots: 1, MemAvailPct: 70, CPUModel: "cpu-x"}); err != nil {
