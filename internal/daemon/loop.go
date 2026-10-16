@@ -102,7 +102,7 @@ func (d *Daemon) tick(ctx context.Context) {
 	d.backoff = 0
 	if err := d.recheck(task); err != nil {
 		d.log.Warn("claimed task does not fit this host; releasing", "task", task.ID, "err", err)
-		d.release(ctx, task, "host recheck: "+err.Error())
+		_ = d.release(ctx, task, "host recheck: "+err.Error())
 		return
 	}
 	d.log.Info("claimed task", "task", task.ID, "fence", task.Fence, "repo", task.Repo)

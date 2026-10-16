@@ -13,8 +13,9 @@ import (
 )
 
 // workerStrippedEnv never reaches claude: GitHub credentials are for the
-// daemon's own git/gh calls only, and hub tokens stay with the daemon.
-var workerStrippedEnv = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "AGENTMESH_TOKEN"}
+// daemon's own git/gh calls only. Every AGENTMESH_* variable (hub URL, admin
+// or session tokens of a shell that started the daemon) is stripped too.
+var workerStrippedEnv = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"}
 
 // readEnvFile parses KEY=VALUE lines ("#" comments, blank lines ignored).
 func readEnvFile(path string) ([]string, error) {
@@ -62,7 +63,7 @@ func buildEnvs(base []string, claudeFile, ghFile string) (claudeEnv, gitEnv []st
 	}
 	for _, kv := range base {
 		k, _, _ := strings.Cut(kv, "=")
-		if !contains(workerStrippedEnv, k) && k != "AGENTMESH_HOOKS" {
+		if !contains(workerStrippedEnv, k) && !strings.HasPrefix(k, "AGENTMESH_") {
 			claudeEnv = append(claudeEnv, kv)
 		}
 	}

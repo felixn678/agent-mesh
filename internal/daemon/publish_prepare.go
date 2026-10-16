@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"fmt"
-	"path"
 	"strconv"
 	"strings"
 )
@@ -22,17 +21,26 @@ const (
 const gitleaksHit = 42
 
 // sensitive reports whether a changed path could alter agent or CI
-// behavior for the next human or worker, or weaken the secret scan.
+// behavior for the next human or worker, or weaken the secret scan. Matching
+// is case-insensitive (macOS and Windows checkouts resolve ".Claude" to
+// ".claude") and by path segment, so a symlink named .claude or .github (a
+// file entry, not a directory prefix) is caught too.
 func sensitive(p string) bool {
-	base := path.Base(p)
-	switch {
-	case strings.HasPrefix(p, ".claude/"), strings.Contains(p, "/.claude/"),
-		strings.HasPrefix(p, ".github/workflows/"),
-		p == ".mcp.json", base == "CLAUDE.md", base == "CLAUDE.local.md",
-		base == ".gitleaks.toml", base == ".gitleaksignore":
+	segs := strings.Split(strings.ToLower(p), "/")
+	base := segs[len(segs)-1]
+	for _, s := range segs {
+		if s == ".claude" {
+			return true
+		}
+	}
+	if segs[0] == ".github" && (len(segs) == 1 || segs[1] == "workflows" || segs[1] == "actions") {
 		return true
 	}
-	return false
+	switch base {
+	case "claude.md", "claude.local.md", ".gitleaks.toml", ".gitleaksignore":
+		return true
+	}
+	return len(segs) == 1 && base == ".mcp.json"
 }
 
 // prepare is publish s0. It returns a refusal reason (task goes stuck, the
@@ -40,7 +48,12 @@ func sensitive(p string) bool {
 // infrastructure failures.
 func (d *Daemon) prepare(ctx context.Context, j *journal) (refuse, note string, err error) {
 	wt, baseRef := j.Worktree, "refs/remotes/origin/"+j.Base
-	status, err := d.git(ctx, wt, "status", "--porcelain=v1", "--untracked-files=all")
+	env, err := d.worktreeEnv(j.Repo, wt)
+	if err != nil {
+		return "", "", err
+	}
+	git := func(args ...string) (string, error) { return d.wtGit(ctx, j.Repo, wt, args...) }
+	status, err := git("status", "--porcelain=v1", "--untracked-files=all")
 	if err != nil {
 		return "", "", err
 	}
@@ -60,28 +73,29 @@ func (d *Daemon) prepare(ctx context.Context, j *journal) (refuse, note string, 
 	}
 	if dirty {
 		msg := fmt.Sprintf("agent-mesh: commit leftover changes of task #%d", j.ID)
-		if _, err := d.git(ctx, wt, "commit", "--quiet", "--no-verify", "-a", "-m", msg); err != nil {
+		if _, err := git("commit", "--quiet", "--no-verify", "-a", "-m", msg); err != nil {
 			return "", "", err
 		}
 		note = noteLeftover
 	}
-	ahead, err := d.git(ctx, wt, "rev-list", "--count", "--end-of-options", baseRef+"..HEAD")
+	ahead, err := git("rev-list", "--count", "--end-of-options", baseRef+"..HEAD")
 	if err != nil {
 		return "", "", err
 	}
 	if n, _ := strconv.Atoi(strings.TrimSpace(ahead)); n == 0 {
 		return "", noteNoChanges, nil
 	}
-	changed, err := d.git(ctx, wt, "diff", "--name-only", "--no-renames", "--end-of-options", baseRef, "HEAD")
+	// -z: raw NUL-separated paths (no quoting of unusual names, spaces kept).
+	changed, err := git("diff", "--name-only", "-z", "--no-renames", "--end-of-options", baseRef, "HEAD")
 	if err != nil {
 		return "", "", err
 	}
-	for _, p := range strings.Fields(changed) {
-		if sensitive(p) {
+	for _, p := range strings.Split(changed, "\x00") {
+		if p != "" && sensitive(p) {
 			return "sensitive path: " + p, "", nil
 		}
 	}
-	_, err = runCmd(ctx, d.cfg.GitCallTimeout, wt, d.gitEnv, nil, d.cfg.GitleaksBin, "git",
+	_, err = runCmd(ctx, d.cfg.GitCallTimeout, wt, env, nil, d.cfg.GitleaksBin, "git",
 		"--no-banner", "--redact", "--ignore-gitleaks-allow", "--log-level", "error",
 		"--exit-code", strconv.Itoa(gitleaksHit), "--log-opts="+baseRef+"..HEAD", wt)
 	switch {
@@ -95,7 +109,7 @@ func (d *Daemon) prepare(ctx context.Context, j *journal) (refuse, note string, 
 
 // commitSubjects lists up to 20 commit subjects for the PR body.
 func (d *Daemon) commitSubjects(ctx context.Context, j *journal) []string {
-	out, err := d.git(ctx, j.Worktree, "log", "--format=%s", "-n", "20", "--end-of-options",
+	out, err := d.wtGit(ctx, j.Repo, j.Worktree, "log", "--format=%s", "-n", "20", "--end-of-options",
 		"refs/remotes/origin/"+j.Base+"..HEAD")
 	if err != nil {
 		return nil

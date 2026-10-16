@@ -17,20 +17,21 @@ type ghPR struct {
 	URL         string `json:"url"`
 }
 
-// gh runs the gh CLI in the worktree (repo context from its origin remote).
-func (d *Daemon) gh(ctx context.Context, dir string, stdin string, args ...string) (string, error) {
-	var in *strings.Reader
-	if stdin != "" {
-		in = strings.NewReader(stdin)
+// gh runs the gh CLI in the task worktree (repo context from its origin
+// remote), with the worktree's git dir pinned like every daemon git call.
+func (d *Daemon) gh(ctx context.Context, j *journal, stdin string, args ...string) (string, error) {
+	env, err := d.worktreeEnv(j.Repo, j.Worktree)
+	if err != nil {
+		return "", err
 	}
-	if in == nil {
-		return runCmd(ctx, d.cfg.GitCallTimeout, dir, d.gitEnv, nil, d.cfg.GHBin, args...)
+	if stdin == "" {
+		return runCmd(ctx, d.cfg.GitCallTimeout, j.Worktree, env, nil, d.cfg.GHBin, args...)
 	}
-	return runCmd(ctx, d.cfg.GitCallTimeout, dir, d.gitEnv, in, d.cfg.GHBin, args...)
+	return runCmd(ctx, d.cfg.GitCallTimeout, j.Worktree, env, strings.NewReader(stdin), d.cfg.GHBin, args...)
 }
 
-func (d *Daemon) openPRs(ctx context.Context, wt string) ([]ghPR, error) {
-	out, err := d.gh(ctx, wt, "", "pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "200")
+func (d *Daemon) openPRs(ctx context.Context, j *journal) ([]ghPR, error) {
+	out, err := d.gh(ctx, j, "", "pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "200")
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +44,7 @@ func (d *Daemon) openPRs(ctx context.Context, wt string) ([]ghPR, error) {
 
 // supersede closes open PRs of older attempts of the same task (s4).
 func (d *Daemon) supersede(ctx context.Context, j *journal) {
-	prs, err := d.openPRs(ctx, j.Worktree)
+	prs, err := d.openPRs(ctx, j)
 	if err != nil {
 		d.log.Warn("supersede: list PRs failed", "task", j.ID, "err", err)
 		return
@@ -55,7 +56,7 @@ func (d *Daemon) supersede(ctx context.Context, j *journal) {
 			continue
 		}
 		if k, _ := strconv.ParseInt(m[1], 10, 64); k < j.Fence {
-			if err := d.closePR(ctx, j.Worktree, pr.URL, "Superseded by a newer attempt ("+j.Branch+")."); err != nil {
+			if err := d.closePR(ctx, j, pr.URL, "Superseded by a newer attempt ("+j.Branch+")."); err != nil {
 				d.log.Warn("supersede: close failed", "task", j.ID, "pr", pr.URL, "err", err)
 			}
 		}
@@ -65,7 +66,7 @@ func (d *Daemon) supersede(ctx context.Context, j *journal) {
 // findOrCreatePR reuses an open PR whose head is the branch (crash after
 // create), else opens a draft PR with a templated body (s5).
 func (d *Daemon) findOrCreatePR(ctx context.Context, j *journal) (string, error) {
-	prs, err := d.openPRs(ctx, j.Worktree)
+	prs, err := d.openPRs(ctx, j)
 	if err != nil {
 		return "", err
 	}
@@ -80,7 +81,7 @@ func (d *Daemon) findOrCreatePR(ctx context.Context, j *journal) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("PR body secret scan: %w", err)
 	}
-	out, err := d.gh(ctx, j.Worktree, body, "pr", "create", "--draft", "--base", j.Base, "--head", j.Branch,
+	out, err := d.gh(ctx, j, body, "pr", "create", "--draft", "--base", j.Base, "--head", j.Branch,
 		"--title", fmt.Sprintf("agent-mesh task #%d", j.ID), "--body-file", "-")
 	if err != nil {
 		return "", err
@@ -93,8 +94,8 @@ func (d *Daemon) findOrCreatePR(ctx context.Context, j *journal) (string, error)
 	return url, nil
 }
 
-func (d *Daemon) closePR(ctx context.Context, dir, url, comment string) error {
-	_, err := d.gh(ctx, dir, "", "pr", "close", url, "--comment", comment)
+func (d *Daemon) closePR(ctx context.Context, j *journal, url, comment string) error {
+	_, err := d.gh(ctx, j, "", "pr", "close", url, "--comment", comment)
 	return err
 }
 
