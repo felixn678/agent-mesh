@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -22,6 +23,9 @@ const (
 	sessionsPerRepo = 5
 	maxDeaths       = 8 // of 30 sessions; deaths are random until then
 )
+
+// daemonRepo has origins and daemon [repos] entries but no sessions.
+var daemonRepo = fmt.Sprintf("https://github.com/example/soak-r%d.git", reposPerHost)
 
 // world is the shared state of one soak run.
 type world struct {
@@ -72,15 +76,31 @@ func TestSoakChaos(t *testing.T) {
 	url := "http://" + addr
 	hubM.run("up", "--no-service", "--listen", addr, "--name", "host-a")
 	hubM.fastTimings()
-	logf, err := os.OpenFile(filepath.Join(t.TempDir(), "hub.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		t.Fatal(err)
+	logDir := t.TempDir()
+	openLog := func(name string) *os.File {
+		f, err := os.OpenFile(filepath.Join(logDir, name), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { f.Close() })
+		return f
 	}
-	defer logf.Close()
+	logf := openLog("hub.log")
 	h := &hubProc{m: hubM, url: url, log: logf}
 	h.start()
 	joinURL, raw, _ := invite(hubM, "host-b", url)
 	other.run("join", joinURL, raw, "--no-service")
+	admin := client.New(url, hubM.token("admin.token"))
+
+	// Real daemons on both hosts with fake claude/gh, competing with sessions
+	// for untargeted and host-targeted tasks.
+	fakes, fakeDir, origins := fakeBin(t), t.TempDir(), makeOrigins(t)
+	dlog := openLog("daemons.log")
+	daemons := []*daemonProc{newDaemon(t, hubM, url, fakes, fakeDir, origins, dlog),
+		newDaemon(t, other, url, fakes, fakeDir, origins, dlog)}
+	for _, d := range daemons {
+		d.start()
+	}
 
 	var samples []sample
 	snap := func(label string) {
@@ -113,21 +133,27 @@ func TestSoakChaos(t *testing.T) {
 		go func(a *actor) { defer w.wg.Done(); a.loop(ctx) }(a)
 	}
 
-	// Chaos schedule: hub restarts at 25/50/75 %, token reload (SIGHUP via
-	// invite) at 40 %.
-	reloadOK := false
+	// Chaos schedule (fractions of the chaos phase): graceful hub restart,
+	// two hub SIGKILL crashes, a token reload (SIGHUP via invite) and a
+	// daemon SIGKILL while its claude runs.
+	var reloadOK bool
+	var kr killResult
 	at := func(f float64) { time.Sleep(time.Until(begin.Add(time.Duration(float64(dur) * f)))) }
-	for i, f := range []float64{0.25, 0.4, 0.5, 0.75} {
-		at(f)
-		if i == 1 {
-			reloadOK = checkReload(t, hubM, url)
-			snap("after reload")
-			continue
-		}
-		snap(fmt.Sprintf("before restart %d", i+1))
-		h.stop()
-		time.Sleep(time.Second)
-		h.start()
+	steps := []struct {
+		f    float64
+		name string
+		do   func()
+	}{
+		{0.20, "SIGTERM restart", func() { h.stop(); time.Sleep(time.Second); h.start() }},
+		{0.35, "SIGKILL crash 1", func() { h.crash(); time.Sleep(time.Second); h.start() }},
+		{0.45, "SIGHUP reload", func() { reloadOK = checkReload(t, hubM, url) }},
+		{0.55, "daemon SIGKILL", func() { kr = killMidTask(t, daemons[1], admin) }},
+		{0.75, "SIGKILL crash 2", func() { h.crash(); time.Sleep(time.Second); h.start() }},
+	}
+	for _, st := range steps {
+		at(st.f)
+		snap("before " + st.name)
+		st.do()
 	}
 	at(1)
 	snap("end of chaos (loaded)")
@@ -135,24 +161,32 @@ func TestSoakChaos(t *testing.T) {
 	time.Sleep(30 * time.Second) // drain: expired leases reclaimed, inboxes emptied
 	stopActors()
 	w.wg.Wait()
+	backlog := waitDaemonBacklog(t, admin, 150*time.Second)
+	for _, d := range daemons {
+		d.signal(syscall.SIGTERM)
+	}
 	finalDrain(t, w)
 	time.Sleep(2 * time.Second)
 	snap("end idle")
 	elapsed := time.Since(begin)
 	h.stop()
 
-	if b, err := os.ReadFile(filepath.Join(hubM.cfg, "hub.toml")); err == nil {
-		t.Logf("final hub.toml timings:\n%s", grepLines(string(b), "ttl", "revive", "reap"))
-	}
 	r := checkInvariants(t, w, hubM.dbPath())
-	r.logPath, r.samples, r.elapsed, r.reloadOK = logf.Name(), samples, elapsed, reloadOK
+	r.logPath, r.samples, r.elapsed, r.reloadOK, r.kill = logf.Name(), samples, elapsed, reloadOK, kr
 	r.hubErrors = grepErrors(t, logf.Name())
+	r.daemonErrors = grepErrors(t, dlog.Name())
+	r.graces = countLines(t, logf.Name(), "extended leases after restart")
+	r.prs, r.openPRs = prChecks(t, fakeDir, r.prURL)
 	r.print(t, w)
+	t.Logf("daemon-repo backlog at end of drain: %d", backlog)
 	if len(r.hubErrors) > 0 {
 		t.Errorf("hub logged errors:\n%s", strings.Join(r.hubErrors, "\n"))
 	}
 	if !reloadOK {
 		t.Error("token reload (SIGHUP) did not take effect")
+	}
+	if r.graces == 0 {
+		t.Error("no startup grace logged after hub crashes")
 	}
 	if first, last := samples[0], samples[len(samples)-1]; last.fds > first.fds+10 {
 		t.Errorf("hub FDs grew: %d at start idle, %d at end idle", first.fds, last.fds)
@@ -198,6 +232,40 @@ func finalDrain(t *testing.T, w *world) {
 	}
 }
 
+// waitDaemonBacklog lets the daemons finish the daemon-only repo's queue
+// (they are slower than sessions, especially under -race) before they stop.
+func waitDaemonBacklog(t *testing.T, admin *client.Client, max time.Duration) int {
+	deadline := time.Now().Add(max)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		n := 0
+		for _, state := range []string{"queued", "running"} {
+			ts, err := admin.ListTasks(ctx, state, time.Time{})
+			if err != nil {
+				t.Logf("backlog poll: %v", err)
+			}
+			for _, task := range ts {
+				if task.Repo == canonical(daemonRepo) && task.Attempts < task.MaxAttempts {
+					n++
+				}
+			}
+		}
+		cancel()
+		if n == 0 || time.Now().After(deadline) {
+			return n
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func countLines(t *testing.T, path, sub string) int {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(b), sub)
+}
+
 func grepErrors(t *testing.T, path string) []string {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -210,17 +278,4 @@ func grepErrors(t *testing.T, path string) []string {
 		}
 	}
 	return out
-}
-
-func grepLines(s string, subs ...string) string {
-	var out []string
-	for _, l := range strings.Split(s, "\n") {
-		for _, sub := range subs {
-			if strings.Contains(l, sub) {
-				out = append(out, l)
-				break
-			}
-		}
-	}
-	return strings.Join(out, "\n")
 }

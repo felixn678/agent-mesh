@@ -161,6 +161,12 @@ func (h *hubProc) stop() {
 	}
 }
 
+// crash SIGKILLs the hub: no shutdown, no final reaper tick, WAL left as is.
+func (h *hubProc) crash() {
+	_ = h.cmd.Process.Kill()
+	<-h.done
+}
+
 func (h *hubProc) pid() int { return h.cmd.Process.Pid }
 
 // procStats reads the open FD and thread counts of pid.
@@ -183,16 +189,20 @@ type bundle struct {
 	SessionToken string `json:"session_token"`
 }
 
-var joinRE = regexp.MustCompile(`agent-mesh join (\S+) (\S+)`)
+var (
+	joinRE = regexp.MustCompile(`agent-mesh join (\S+)`)
+	codeRE = regexp.MustCompile(`paste this code when asked: (\S+)`)
+)
 
 // invite runs `invite <host>` on the hub machine and returns url + bundle.
 func invite(m *machine, host, url string) (joinURL, raw string, b bundle) {
 	m.t.Helper()
 	out := m.run("invite", host, "--url", url)
-	sub := joinRE.FindStringSubmatch(out)
-	if sub == nil {
-		m.t.Fatalf("no join line in:\n%s", out)
+	sub, code := joinRE.FindStringSubmatch(out), codeRE.FindStringSubmatch(out)
+	if sub == nil || code == nil {
+		m.t.Fatalf("no join line or invite code in:\n%s", out)
 	}
+	sub = []string{sub[0], sub[1], code[1]}
 	dec, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(sub[2], "="))
 	if err != nil {
 		m.t.Fatalf("bundle: %v", err)
