@@ -66,28 +66,32 @@ func messageBlock(m api.Message, from api.Session) string {
 	}
 	at := time.UnixMilli(m.CreatedAt).Local().Format("2006-01-02 15:04")
 	fmt.Fprintf(&b, "--- message %d from %s session %s at %s ---\n", m.ID, origin, Clean(ID8(m.FromSession)), at)
-	for _, line := range strings.Split(strings.TrimRight(m.Body, "\n"), "\n") {
-		b.WriteString("> " + stripControl(line) + "\n")
-	}
+	b.WriteString(Quote(m.Body))
 	fmt.Fprintf(&b, "--- end message %d ---\n", m.ID)
 	return b.String()
 }
 
-// Clean makes a value safe for a single header line: control characters
-// (including newlines) are removed.
-func Clean(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, s)
+// Quote renders untrusted text as "> "-prefixed lines, so it cannot forge
+// delimiters, and strips characters that can disguise or reorder it.
+func Quote(body string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+		b.WriteString("> " + stripUnsafe(line, true) + "\n")
+	}
+	return b.String()
 }
 
-// stripControl removes control characters except tab from one body line.
-func stripControl(s string) string {
+// Clean makes a value safe for a single line in a terminal or a model
+// prompt: control (Cc, incl. newlines and ESC), format (Cf: bidi overrides,
+// zero-width) and line/paragraph separator (Zl, Zp) characters are removed.
+func Clean(s string) string { return stripUnsafe(s, false) }
+
+func stripUnsafe(s string, keepTab bool) string {
 	return strings.Map(func(r rune) rune {
-		if r != '\t' && unicode.IsControl(r) {
+		if keepTab && r == '\t' {
+			return r
+		}
+		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return -1
 		}
 		return r
