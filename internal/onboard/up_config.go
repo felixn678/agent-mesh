@@ -86,7 +86,7 @@ func writeHubSide(e *Env, host, listen string) (eff string, changed bool, err er
 // writeClientSide creates client.toml and daemon.toml when absent. With
 // retarget (an explicit --listen) it also repoints their hub_url, since a hub
 // bound to a Tailscale IP no longer answers on loopback.
-func writeClientSide(e *Env, hubURL string, retarget bool) error {
+func writeClientSide(e *Env, hubURL string, retarget bool) (daemonRetargeted bool, err error) {
 	files := map[string]string{
 		"client.toml": clientTOML(hubURL),
 		"daemon.toml": daemonTOML(hubURL, e.Path("host.token"), e.DataDir),
@@ -95,37 +95,41 @@ func writeClientSide(e *Env, hubURL string, retarget bool) error {
 		path := e.Path(name)
 		wrote, err := writeIfAbsent(path, []byte(body))
 		if err != nil {
-			return err
+			return false, err
 		}
 		if wrote {
 			e.printf("created %s\n", name)
 			continue
 		}
 		if retarget {
-			if err := setHubURL(path, hubURL); err != nil {
-				return err
+			changed, err := setHubURL(path, hubURL)
+			if err != nil {
+				return false, err
 			}
+			daemonRetargeted = daemonRetargeted || (changed && name == "daemon.toml")
 		}
 	}
-	return nil
+	return daemonRetargeted, nil
 }
 
-// setHubURL rewrites hub_url in an existing TOML file when it differs.
-func setHubURL(path, hubURL string) error {
+// setHubURL rewrites hub_url in an existing TOML file when it differs and
+// reports whether it did.
+func setHubURL(path, hubURL string) (bool, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	next, found := setTopLevel(string(src), "hub_url", hubURL)
 	if !found || next == string(src) {
-		return nil
+		return false, nil
 	}
-	return writeAtomic(path, []byte(next), 0o600)
+	return true, writeAtomic(path, []byte(next), 0o600)
 }
 
-// startServices installs and starts the hub and daemon user services,
-// restarting the hub when its listen address changed.
-func startServices(ctx context.Context, e *Env, restartHub bool) error {
+// startServices installs and starts the hub and daemon user services. When
+// the hub address changed, a running hub and daemon keep the old address in
+// memory, so both are restarted (hub first, so the daemon finds it).
+func startServices(ctx context.Context, e *Env, addressChanged bool) error {
 	units := []Unit{
 		{Name: "hub", Args: []string{"hub"}, Desc: "agent-mesh hub"},
 		{Name: "daemon", Args: []string{"daemon"}, Desc: "agent-mesh host daemon (claude -p workers)"},
@@ -136,9 +140,11 @@ func startServices(ctx context.Context, e *Env, restartHub bool) error {
 		}
 		e.printf("service agent-mesh %s: installed and started\n", u.Name)
 	}
-	if restartHub {
-		if err := e.Mgr.Restart(ctx, "hub"); err != nil {
-			return fmt.Errorf("restart hub: %w", err)
+	if addressChanged {
+		for _, name := range []string{"hub", "daemon"} {
+			if err := e.Mgr.Restart(ctx, name); err != nil {
+				return fmt.Errorf("restart %s: %w", name, err)
+			}
 		}
 	}
 	if e.GOOS == "linux" {

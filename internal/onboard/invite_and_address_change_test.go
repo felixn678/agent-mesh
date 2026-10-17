@@ -67,3 +67,51 @@ func TestUnreachableHintNamesTailscale(t *testing.T) {
 		t.Errorf("generic hint: %s", h)
 	}
 }
+
+// Moving the hub to a new address restarts the running hub and daemon, which
+// otherwise keep calling the old address.
+func TestUpWithNewListenRestartsHubAndDaemon(t *testing.T) {
+	ctx := context.Background()
+	e, out, mgr := newTestEnv(t, "box")
+	useHome(t, e)
+	if err := Up(ctx, e, []string{"--listen", freeAddr(t), "--no-service"}); err != nil {
+		t.Fatalf("up: %v\n%s", err, out)
+	}
+	if err := Up(ctx, e, []string{"--listen", freeAddr(t)}); err != nil {
+		t.Fatalf("rebind: %v\n%s", err, out)
+	}
+	if got := strings.Join(mgr.restarts, ","); got != "hub,daemon" {
+		t.Fatalf("restarts = %s, want hub,daemon", got)
+	}
+}
+
+// Re-joining under a different hub URL restarts the joined machine's daemon.
+func TestRejoinWithNewURLRestartsDaemon(t *testing.T) {
+	ctx := context.Background()
+	hubEnv, hubOut, _ := newTestEnv(t, "box")
+	useHome(t, hubEnv)
+	listen := freeAddr(t)
+	if err := Up(ctx, hubEnv, []string{"--listen", listen}); err != nil {
+		t.Fatalf("up: %v\n%s", err, hubOut)
+	}
+	hubOut.Reset()
+	if err := Invite(ctx, hubEnv, []string{"laptop"}); err != nil {
+		t.Fatal(err)
+	}
+	arg := joinLine(t, hubOut.String())
+	joiner, joinOut, joinMgr := newTestEnv(t, "laptop")
+	if err := Join(ctx, joiner, arg); err != nil {
+		t.Fatalf("join: %v\n%s", err, joinOut)
+	}
+	if len(joinMgr.restarts) != 0 {
+		t.Fatalf("first join restarted %v", joinMgr.restarts)
+	}
+	_, port, _ := strings.Cut(listen, ":")
+	arg[0] = "http://localhost:" + port // same hub, new address
+	if err := Join(ctx, joiner, arg); err != nil {
+		t.Fatalf("rejoin: %v\n%s", err, joinOut)
+	}
+	if got := strings.Join(joinMgr.restarts, ","); got != "daemon" {
+		t.Fatalf("restarts = %s, want daemon", got)
+	}
+}

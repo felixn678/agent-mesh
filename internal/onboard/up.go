@@ -46,7 +46,7 @@ func Up(ctx context.Context, e *Env, args []string) error {
 		return err
 	}
 	hubURL := "http://" + eff
-	if err := writeClientSide(e, hubURL, *listen != ""); err != nil {
+	if _, err := writeClientSide(e, hubURL, *listen != ""); err != nil {
 		return err
 	}
 	e.printf("config: %s (0700)\n", e.ConfigDir)

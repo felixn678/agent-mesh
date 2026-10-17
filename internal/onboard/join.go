@@ -89,7 +89,8 @@ func Join(ctx context.Context, e *Env, args []string) error {
 	if err := installToken(e.Path("session.token"), b.SessionToken); err != nil {
 		return err
 	}
-	if err := writeClientSide(e, hubURL, true); err != nil {
+	retargeted, err := writeClientSide(e, hubURL, true)
+	if err != nil {
 		return err
 	}
 	e.printf("joined hub %s as %q (config: %s)\n", hubURL, b.Host, e.ConfigDir)
@@ -99,6 +100,11 @@ func Join(ctx context.Context, e *Env, args []string) error {
 		unit := Unit{Name: "daemon", Args: []string{"daemon"}, Desc: "agent-mesh host daemon (claude -p workers)"}
 		if err := e.Mgr.Install(ctx, unit); err != nil {
 			return fmt.Errorf("install daemon service: %w", err)
+		}
+		if retargeted { // a running daemon keeps the old hub URL until restarted
+			if err := e.Mgr.Restart(ctx, "daemon"); err != nil {
+				return fmt.Errorf("restart daemon: %w", err)
+			}
 		}
 		e.printf("service agent-mesh daemon: installed and started\n")
 		if e.GOOS == "linux" {
