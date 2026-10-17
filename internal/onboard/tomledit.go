@@ -42,6 +42,26 @@ func addToTable(src, table, entry string) string {
 	return strings.Join(out, "\n") + "\n"
 }
 
+// removeFromTable drops the entries of [table] whose key is key (bare or
+// quoted), keeping comments and every other line.
+func removeFromTable(src, table, key string) string {
+	lines := strings.Split(src, "\n")
+	out := make([]string, 0, len(lines))
+	in := false
+	for _, l := range lines {
+		if isHeader(l) {
+			in = strings.HasPrefix(strings.TrimSpace(l), "["+table+"]")
+		} else if in && isEntry(l) {
+			k, _, _ := strings.Cut(strings.TrimSpace(l), "=")
+			if strings.Trim(strings.TrimSpace(k), `"`) == key {
+				continue
+			}
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
 // setTopLevel rewrites `key = value` among the top-level keys (before the
 // first table header), keeping any trailing comment. It reports whether the
 // key was found.

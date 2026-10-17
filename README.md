@@ -102,7 +102,7 @@ agent-mesh join <hub-url>          # on the new machine; paste the code when ask
 agent-mesh setup-claude && agent-mesh doctor
 ```
 
-The invite line contains the new machine's tokens: send it over a private channel only. `join` verifies the tokens against the hub before writing anything. If the hub listens on loopback, `invite` warns that other machines cannot reach it; use `invite --url http://<tailscale-ip>:47878` after rebinding.
+The invite line contains the new machine's tokens: send it over a private channel only. Lost the code? The hub keeps only token hashes, so it cannot show it again: run `agent-mesh invite <host-name> --reissue` for a new one (the old code and that machine's current tokens stop working, so it runs `join` again). `join` verifies the tokens against the hub before writing anything. If the hub listens on loopback, `invite` warns that other machines cannot reach it; use `invite --url http://<tailscale-ip>:47878` after rebinding.
 
 Before a daemon takes tasks, add the repos it may work on to `[repos]` in its `daemon.toml` (see [Daemon config](docs/deployment-guide.md#daemon-config)) and give it GitHub credentials in `gh.env` (or a working `gh auth login`).
 

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -18,7 +19,8 @@ import (
 func Invite(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("invite", flag.ContinueOnError)
 	urlFlag := fs.String("url", "", "hub URL the new machine should use (default: http://<hub.toml listen>)")
-	const usage = "usage: agent-mesh invite <host-name> [--url http://host:port]"
+	reissue := fs.Bool("reissue", false, "replace an existing machine's tokens with new ones (lost invite code); its old code and tokens stop working, so it must run join again")
+	const usage = "usage: agent-mesh invite <host-name> [--url http://host:port] [--reissue]"
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -37,11 +39,15 @@ func Invite(ctx context.Context, e *Env, args []string) error {
 	if err != nil {
 		return fmt.Errorf("cannot read hub.toml (run \"agent-mesh up\" on this machine first): %w", err)
 	}
-	if _, ok := cfg.HostTokens[host]; ok {
-		return fmt.Errorf("host %q already has a token in hub.toml; pick another name or remove its entries to re-invite", host)
-	}
-	if _, ok := cfg.SessionTokens[host]; ok {
-		return fmt.Errorf("host %q already has a session token in hub.toml", host)
+	_, hasHost := cfg.HostTokens[host]
+	_, hasSession := cfg.SessionTokens[host]
+	switch {
+	case (hasHost || hasSession) && !*reissue:
+		return fmt.Errorf("host %q already has tokens in hub.toml; to get a new invite code for it run: agent-mesh invite %s --reissue", host, host)
+	case *reissue && !hasHost && !hasSession:
+		return fmt.Errorf("host %q has no tokens to reissue; run: agent-mesh invite %s", host, host)
+	case *reissue && isOwnHost(e, cfg.HostTokens[host]):
+		return fmt.Errorf("host %q is this hub machine; reissuing would cut it off from its own hub", host)
 	}
 	hubURL := *urlFlag
 	if hubURL == "" {
@@ -59,6 +65,7 @@ func Invite(ctx context.Context, e *Env, args []string) error {
 		return err
 	}
 	err = editHubTOML(path, func(src string) (string, error) {
+		src = removeFromTable(removeFromTable(src, "host_tokens", host), "session_tokens", host)
 		src = addToTable(src, "host_tokens", fmt.Sprintf("%q = %q", host, config.HashToken(hostTok)))
 		return addToTable(src, "session_tokens", fmt.Sprintf("%q = %q", host, config.HashToken(sessTok))), nil
 	})
@@ -80,6 +87,12 @@ func Invite(ctx context.Context, e *Env, args []string) error {
 	e.printf("\nOn %q run (the code is a secret: send it over a private channel, never paste it anywhere public):\n\n  agent-mesh join %s\n\npaste this code when asked: %s\n\n"+
 		"(Entering the code at the prompt keeps it out of shell history and the process list;\n `agent-mesh join %s <code>` also works but exposes it there.)\n", host, hubURL, enc, hubURL)
 	return nil
+}
+
+// isOwnHost reports whether hash is the hash of this machine's host.token.
+func isOwnHost(e *Env, hash string) bool {
+	tok, err := os.ReadFile(e.Path("host.token"))
+	return err == nil && hash != "" && config.HashToken(strings.TrimSpace(string(tok))) == hash
 }
 
 // reloadHub asks the running hub to re-read hub.toml: through the service
