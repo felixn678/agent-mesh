@@ -1,5 +1,5 @@
 # ~/.config/agent-mesh/hub.toml  (mode 0600). Placeholders only; never commit real values.
-listen = "127.0.0.1:8787"   # v1 loopback. Multi-host: "<tailnet-ip>:8787" (Tailscale only)
+listen = "127.0.0.1:47878"   # v1 loopback. Multi-host: "<tailnet-ip>:47878" (Tailscale only)
 db_path = "~/.local/share/agent-mesh/hub.db"
 
 # Output of: agent-mesh token new --admin --out ~/.config/agent-mesh/admin.token

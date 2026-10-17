@@ -54,7 +54,7 @@ type Config struct {
 // DefaultConfig returns the loopback v1 defaults (no repos, no profiles).
 func DefaultConfig() Config {
 	return Config{
-		HubURL:                 "http://127.0.0.1:8787",
+		HubURL:                 "http://127.0.0.1:47878",
 		HostTokenFile:          "~/.config/agent-mesh/host.token",
 		StateDir:               "~/.local/share/agent-mesh",
 		PollInterval:           30 * time.Second,

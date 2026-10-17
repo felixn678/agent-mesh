@@ -8,7 +8,7 @@ import (
 )
 
 // DefaultHubURL is the v1 loopback hub.
-const DefaultHubURL = "http://127.0.0.1:8787"
+const DefaultHubURL = "http://127.0.0.1:47878"
 
 // HubURL resolves which hub CLI commands talk to: $AGENTMESH_URL, else
 // hub_url from client.toml, else from daemon.toml (both in dir), else the

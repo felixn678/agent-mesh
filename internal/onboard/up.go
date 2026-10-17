@@ -11,13 +11,13 @@ import (
 	"time"
 )
 
-const defaultListen = "127.0.0.1:8787"
+const defaultListen = "127.0.0.1:47878"
 
 // Up bootstraps the hub machine: config, tokens, hub.toml, daemon.toml and
 // the user services. It is idempotent: existing files and tokens are kept.
 func Up(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
-	listen := fs.String("listen", "", "hub listen address (default "+defaultListen+"; use <tailscale-ip>:8787 for other machines)")
+	listen := fs.String("listen", "", "hub listen address (default "+defaultListen+"; use <tailscale-ip>:47878 for other machines)")
 	name := fs.String("name", "", "name of this machine (default: short hostname)")
 	noService := fs.Bool("no-service", false, "write config only; do not install or start services")
 	if err := fs.Parse(args); err != nil {
@@ -92,7 +92,7 @@ func tailscaleHint(ctx context.Context, e *Env, listen string) {
 	if ip == "" || !strings.HasPrefix(listen, "127.") {
 		return
 	}
-	e.printf("\nTailscale detected (%s). To let other machines join, run:\n  agent-mesh up --listen %s:8787\n", ip, ip)
+	e.printf("\nTailscale detected (%s). To let other machines join, run:\n  agent-mesh up --listen %s:47878\n", ip, ip)
 }
 
 // tailscaleIP returns this machine's tailnet IPv4 address, or "".

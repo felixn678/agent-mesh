@@ -41,7 +41,7 @@ agent-mesh update           # install the latest release, restart this machine's
 ```
  your Claude sessions (MCP tools + hooks, session token) ─┐   terminal: agent-mesh task|hosts|report
                                                           ▼
-               hub (SQLite WAL, REST /api/v1 + MCP /mcp, 127.0.0.1:8787)
+               hub (SQLite WAL, REST /api/v1 + MCP /mcp, 127.0.0.1:47878)
                                                           ▲  pull only, host token
                daemon per machine ──► claude -p in worktree ┘
 ```
@@ -92,7 +92,7 @@ agent-mesh setup-claude            # connect Claude Code sessions on this machin
 agent-mesh doctor                  # green checks = ready
 ```
 
-`up` is idempotent: re-running keeps existing tokens and configs. It listens on `127.0.0.1:8787` unless you pass `--listen`, and refuses wildcard addresses. If Tailscale is present it prints the command to serve other machines (`agent-mesh up --listen <tailscale-ip>:8787`). Flags: `--listen <addr>`, `--name <host>` (default: short hostname), `--no-service` (write config only; then run `agent-mesh hub` and `agent-mesh daemon` yourself). On Linux run `loginctl enable-linger "$USER"` (hinted) so services survive logout and reboot.
+`up` is idempotent: re-running keeps existing tokens and configs. It listens on `127.0.0.1:47878` unless you pass `--listen` (the default port stays clear of common dev servers: 3000, 5173, 8080, Expo's 8081, wrangler's 8787), and refuses wildcard addresses. If Tailscale is present it prints the command to serve other machines (`agent-mesh up --listen <tailscale-ip>:47878`). Flags: `--listen <addr>`, `--name <host>` (default: short hostname), `--no-service` (write config only; then run `agent-mesh hub` and `agent-mesh daemon` yourself). On Linux run `loginctl enable-linger "$USER"` (hinted) so services survive logout and reboot.
 
 Add another machine (yours or a friend's, same tailnet):
 
@@ -102,7 +102,7 @@ agent-mesh join <hub-url>          # on the new machine; paste the code when ask
 agent-mesh setup-claude && agent-mesh doctor
 ```
 
-The invite line contains the new machine's tokens: send it over a private channel only. `join` verifies the tokens against the hub before writing anything. If the hub listens on loopback, `invite` warns that other machines cannot reach it; use `invite --url http://<tailscale-ip>:8787` after rebinding.
+The invite line contains the new machine's tokens: send it over a private channel only. `join` verifies the tokens against the hub before writing anything. If the hub listens on loopback, `invite` warns that other machines cannot reach it; use `invite --url http://<tailscale-ip>:47878` after rebinding.
 
 Before a daemon takes tasks, add the repos it may work on to `[repos]` in its `daemon.toml` (see [Daemon config](docs/deployment-guide.md#daemon-config)) and give it GitHub credentials in `gh.env` (or a working `gh auth login`).
 
@@ -119,7 +119,7 @@ Manual setup (tokens, units, editing `hub.toml` by hand) is still supported: see
 
 `AGENTMESH_CONFIG_DIR=/abs/path` overrides the config dir on both systems (for example a second identity on one machine). Set it before `up`/`join` (the services they install inherit it) and export it in your shell profile so Claude sessions, whose hooks and MCP helper run `agent-mesh`, use the same directory. It must be an absolute path.
 
-CLI commands resolve the hub URL as `$AGENTMESH_URL`, else `hub_url` in `client.toml`, else in `daemon.toml`, else `http://127.0.0.1:8787`. Tokens: `$AGENTMESH_TOKEN`, else `session.token` (task add/list/get, hosts); cancel, requeue and `report` prefer `admin.token`. Hooks, the waiter and the MCP server use only the session token (`$AGENTMESH_SESSION_TOKEN` or `session.token`) and send it only to the hub in `client.toml`/`daemon.toml`: they ignore `$AGENTMESH_URL`, which a project's `.claude/settings.json` could set.
+CLI commands resolve the hub URL as `$AGENTMESH_URL`, else `hub_url` in `client.toml`, else in `daemon.toml`, else `http://127.0.0.1:47878`. Tokens: `$AGENTMESH_TOKEN`, else `session.token` (task add/list/get, hosts); cancel, requeue and `report` prefer `admin.token`. Hooks, the waiter and the MCP server use only the session token (`$AGENTMESH_SESSION_TOKEN` or `session.token`) and send it only to the hub in `client.toml`/`daemon.toml`: they ignore `$AGENTMESH_URL`, which a project's `.claude/settings.json` could set.
 
 ### Terminal commands
 

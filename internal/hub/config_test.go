@@ -36,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 		"[host_tokens]\nbox = \"" + config.HashToken("b") + "\"\n"
 	os.WriteFile(good, []byte(toml), 0o600)
 	c, err := hub.LoadConfig(good)
-	if err != nil || c.LeaseTTL != 2*time.Minute || c.Listen != "127.0.0.1:8787" || c.StaleRequeue != time.Hour {
+	if err != nil || c.LeaseTTL != 2*time.Minute || c.Listen != "127.0.0.1:47878" || c.StaleRequeue != time.Hour {
 		t.Fatalf("%+v %v", c, err)
 	}
 	bad := map[string]string{

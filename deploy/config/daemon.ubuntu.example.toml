@@ -1,5 +1,5 @@
 # ~/.config/agent-mesh/daemon.toml  (mode 0600). Placeholders only.
-hub_url = "http://127.0.0.1:8787"
+hub_url = "http://127.0.0.1:47878"
 # host_token_file = "<config-dir>/host.token"   # default: host.token next to this file
 state_dir = "~/.local/share/agent-mesh"   # repos/ worktrees/ logs/ spool/ run/
 

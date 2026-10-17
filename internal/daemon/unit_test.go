@@ -272,14 +272,14 @@ func TestLoadConfigDefaultsNextToConfigFile(t *testing.T) {
 	if err := os.WriteFile(p, []byte("state_dir = \"/tmp/am\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "client.toml"), []byte("hub_url = \"http://hub.example:8787\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "client.toml"), []byte("hub_url = \"http://hub.example:47878\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, err := LoadConfig(p) // gh.env absent: tolerated
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.HubURL != "http://hub.example:8787" || c.HostTokenFile != filepath.Join(dir, "host.token") ||
+	if c.HubURL != "http://hub.example:47878" || c.HostTokenFile != filepath.Join(dir, "host.token") ||
 		c.GHEnvFile != filepath.Join(dir, "gh.env") {
 		t.Fatalf("config = %+v", c)
 	}

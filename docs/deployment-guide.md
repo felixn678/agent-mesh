@@ -29,7 +29,7 @@ After `up` or `join`, a daemon has no repos yet: edit `[repos]` in `daemon.toml`
 
 | Key | Default | Meaning |
 |---|---|---|
-| `hub_url` | `$AGENTMESH_URL`, else `client.toml`, else `http://127.0.0.1:8787` | hub address |
+| `hub_url` | `$AGENTMESH_URL`, else `client.toml`, else `http://127.0.0.1:47878` | hub address |
 | `host_token_file` | `host.token` next to `daemon.toml` | daemon token (0600 required) |
 | `state_dir` | `~/.local/share/agent-mesh` | `repos/ worktrees/ logs/ spool/ run/` (0700) |
 | `poll_interval`, `heartbeat_interval` | `30s`, `60s` | claim tick, lease heartbeat |
@@ -78,7 +78,7 @@ The script never overwrites existing configs, never creates secrets, never start
 5. `loginctl enable-linger $USER` so units run without login.
 6. Network must be up at boot for GitHub: `nmcli connection modify <connection-name> connection.autoconnect yes`.
 7. `systemctl --user daemon-reload && systemctl --user enable --now agent-mesh-hub agent-mesh-daemon`.
-8. Verify: `ss -ltnp | grep 8787` shows `127.0.0.1`; `agent-mesh hosts` lists the host without `unhealthy`; `agent-mesh doctor`.
+8. Verify: `ss -ltnp | grep 47878` shows `127.0.0.1`; `agent-mesh hosts` lists the host without `unhealthy`; `agent-mesh doctor`.
 9. Reboot test: reboot without logging in; both units active, `agent-mesh hosts` healthy.
 
 Units use `Restart=on-failure`, `RestartSec=10`, `StartLimitIntervalSec=0` so a late network never exhausts the restart budget. The daemon unit sets an explicit `PATH` (`~/.local/bin`, `~/go/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`; systemd does not read your shell profile) and `KillMode=mixed` with `TimeoutStopSec=60` so it releases leases on stop. Validate edits with `systemd-analyze --user verify <unit>`.
@@ -131,9 +131,9 @@ Run once after joining the Mac; each step says what "good" looks like.
 ## Optional: Tailscale and a second host (manual)
 
 1. Install Tailscale on both hosts, same tailnet; note the hub's tailnet IP or MagicDNS name.
-2. Hub: `agent-mesh up --listen <tailnet-ip>:8787` (or set `listen` in `hub.toml` and restart the hub). The hub's own `daemon.toml` / `client.toml` `hub_url` must point to the same address. The hub retries bind, so tailscaled start order is fine.
-3. Optional firewall: `sudo ufw allow in on tailscale0 to any port 8787 proto tcp` (run by you, not by the scripts).
-4. Mac, fast path: `agent-mesh join <hub-url>` and paste the code printed by the hub's `invite` (see [macOS](#macos)). Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:8787"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
+2. Hub: `agent-mesh up --listen <tailnet-ip>:47878` (or set `listen` in `hub.toml` and restart the hub). The hub's own `daemon.toml` / `client.toml` `hub_url` must point to the same address. The hub retries bind, so tailscaled start order is fine.
+3. Optional firewall: `sudo ufw allow in on tailscale0 to any port 47878 proto tcp` (run by you, not by the scripts).
+4. Mac, fast path: `agent-mesh join <hub-url>` and paste the code printed by the hub's `invite` (see [macOS](#macos)). Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:47878"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
 5. On each host, `agent-mesh setup-claude`, then test a message in both directions.
 
 ## Claude integration check

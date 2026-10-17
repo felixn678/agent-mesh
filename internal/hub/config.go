@@ -29,7 +29,7 @@ type Config struct {
 // DefaultConfig returns the loopback-only defaults.
 func DefaultConfig() Config {
 	return Config{
-		Listen:       "127.0.0.1:8787",
+		Listen:       "127.0.0.1:47878",
 		DBPath:       "~/.local/share/agent-mesh/hub.db",
 		LeaseTTL:     5 * time.Minute,
 		ReapInterval: time.Minute,

@@ -108,7 +108,7 @@ func TestUpIsIdempotent(t *testing.T) {
 
 func TestUpRejectsWildcardListen(t *testing.T) {
 	e, _, _ := newTestEnv(t, "box")
-	for _, l := range []string{"0.0.0.0:8787", ":8787", "[::]:8787", "nonsense"} {
+	for _, l := range []string{"0.0.0.0:47878", ":47878", "[::]:47878", "nonsense"} {
 		if err := Up(context.Background(), e, []string{"--listen", l, "--no-service"}); err == nil {
 			t.Errorf("listen %q accepted", l)
 		}

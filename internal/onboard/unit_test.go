@@ -8,7 +8,7 @@ import (
 )
 
 func TestBundleRoundTripAndValidation(t *testing.T) {
-	in := Bundle{V: 1, URL: "http://100.64.0.1:8787", Host: "laptop", HostToken: strings.Repeat("a", 64), SessionToken: strings.Repeat("b", 64)}
+	in := Bundle{V: 1, URL: "http://100.64.0.1:47878", Host: "laptop", HostToken: strings.Repeat("a", 64), SessionToken: strings.Repeat("b", 64)}
 	enc, err := in.Encode()
 	if err != nil {
 		t.Fatal(err)
@@ -40,9 +40,9 @@ func TestBundleRoundTripAndValidation(t *testing.T) {
 }
 
 func TestAddToTablePreservesContent(t *testing.T) {
-	src := "# top comment\nlisten = \"127.0.0.1:8787\"\n\n# hosts\n[host_tokens]\n\"a\" = \"sha256:1\"   # keep\n\n# sessions\n[session_tokens]\n\"a\" = \"sha256:2\"\n"
+	src := "# top comment\nlisten = \"127.0.0.1:47878\"\n\n# hosts\n[host_tokens]\n\"a\" = \"sha256:1\"   # keep\n\n# sessions\n[session_tokens]\n\"a\" = \"sha256:2\"\n"
 	got := addToTable(src, "host_tokens", `"b" = "sha256:3"`)
-	want := "# top comment\nlisten = \"127.0.0.1:8787\"\n\n# hosts\n[host_tokens]\n\"a\" = \"sha256:1\"   # keep\n\"b\" = \"sha256:3\"\n\n# sessions\n[session_tokens]\n\"a\" = \"sha256:2\"\n"
+	want := "# top comment\nlisten = \"127.0.0.1:47878\"\n\n# hosts\n[host_tokens]\n\"a\" = \"sha256:1\"   # keep\n\"b\" = \"sha256:3\"\n\n# sessions\n[session_tokens]\n\"a\" = \"sha256:2\"\n"
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
@@ -56,9 +56,9 @@ func TestAddToTablePreservesContent(t *testing.T) {
 }
 
 func TestSetTopLevelKeepsComment(t *testing.T) {
-	src := "listen = \"127.0.0.1:8787\"   # note\n[t]\nlisten = \"keep\"\n"
-	got, ok := setTopLevel(src, "listen", "100.1.1.1:8787")
-	if !ok || got != "listen = \"100.1.1.1:8787\"   # note\n[t]\nlisten = \"keep\"\n" {
+	src := "listen = \"127.0.0.1:47878\"   # note\n[t]\nlisten = \"keep\"\n"
+	got, ok := setTopLevel(src, "listen", "100.1.1.1:47878")
+	if !ok || got != "listen = \"100.1.1.1:47878\"   # note\n[t]\nlisten = \"keep\"\n" {
 		t.Errorf("got %q %v", got, ok)
 	}
 }

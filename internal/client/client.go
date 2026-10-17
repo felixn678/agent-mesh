@@ -67,7 +67,7 @@ type Client struct {
 	hubVersion atomic.Value // string from the last response's version header
 }
 
-// New builds a client; baseURL is e.g. http://127.0.0.1:8787.
+// New builds a client; baseURL is e.g. http://127.0.0.1:47878.
 func New(baseURL, token string) *Client {
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), token: token, http: &http.Client{}}
 }
