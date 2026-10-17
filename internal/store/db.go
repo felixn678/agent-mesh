@@ -18,7 +18,7 @@ var schemaSQL string
 
 // schemaVersion is stored in PRAGMA user_version. Future changes must be
 // forward-only migrations keyed on it.
-const schemaVersion = 7
+const schemaVersion = 8
 
 // upgradeV1 adds the v2 columns to a v1 database. SQLite has no ADD COLUMN IF
 // NOT EXISTS, so a concurrent first open may find a column already added.
@@ -45,6 +45,8 @@ var upgradeV5 = []string{"ALTER TABLE sessions ADD COLUMN worker INTEGER NOT NUL
 
 // upgradeV6 adds the v7 session agent version.
 var upgradeV6 = []string{"ALTER TABLE sessions ADD COLUMN agent_version TEXT NOT NULL DEFAULT ''"}
+
+// v8 only adds the host_profiles table, which schemaSQL creates.
 
 // upgrades maps a stored version to the statements that lift it by one.
 var upgrades = map[int][]string{1: upgradeV1, 2: upgradeV2, 3: upgradeV3, 4: upgradeV4, 5: upgradeV5, 6: upgradeV6}

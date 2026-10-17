@@ -29,6 +29,7 @@ commands:
   task     add/list/show/cancel/requeue tasks
   hosts    show hosts and their load (--sessions: also live Claude sessions)
   sessions list live Claude sessions on every machine
+  host-note  say what a machine is for (sessions use it to pick where work runs)
   inbox    wait for session messages (background waiter)
   hook     Claude Code hook entry point (session-start|prompt|stop|session-end|mcp-headers)
   setup-claude  opt-in install of the agentmesh MCP server and hooks for Claude Code
@@ -64,7 +65,7 @@ func run(ctx context.Context, args []string) error {
 		return hub.Run(ctx, rest)
 	case "daemon":
 		return daemon.Run(ctx, rest)
-	case "task", "hosts", "sessions", "inbox", "hook", "setup-claude":
+	case "task", "hosts", "sessions", "host-note", "inbox", "hook", "setup-claude":
 		return cli.Run(ctx, args)
 	case "up", "invite", "join", "doctor":
 		return runOnboard(ctx, args)

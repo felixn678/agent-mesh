@@ -1,4 +1,4 @@
--- Schema version 5 (older databases gain later columns via ALTER and the v4 trigger, see db.go upgrades). Statements are idempotent so concurrent first opens are safe.
+-- Schema version 8 (older databases gain later columns via ALTER and the v4 trigger, see db.go upgrades). Statements are idempotent so concurrent first opens are safe.
 CREATE TABLE IF NOT EXISTS tasks (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,  -- ids never reused (branch names embed id)
   repo             TEXT NOT NULL,                 -- logical key; host maps to clone URL
@@ -54,6 +54,17 @@ CREATE TABLE IF NOT EXISTS hosts (
   claude_version   TEXT,
   agent_version    TEXT,
   last_seen_at     INTEGER NOT NULL
+);
+
+-- v8: what each machine is for. note is set by the user (host-note); os and
+-- tools (comma-separated) are detected by session-start hooks. Kept apart from
+-- hosts, which only daemons write.
+CREATE TABLE IF NOT EXISTS host_profiles (
+  name       TEXT PRIMARY KEY,
+  note       TEXT NOT NULL DEFAULT '',
+  os         TEXT NOT NULL DEFAULT '',
+  tools      TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
 );
 
 -- last_alive_at: last reaper tick; last_grace_at: last startup grace.

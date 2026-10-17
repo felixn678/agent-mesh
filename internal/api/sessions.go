@@ -37,6 +37,9 @@ type RegisterSessionRequest struct {
 	Worker *bool `json:"worker,omitempty"`
 	// AgentVersion is the hook binary's version; empty keeps the stored one.
 	AgentVersion string `json:"agent_version,omitempty"`
+	// Machine is the host's detected OS and tools, sent at session start;
+	// nil keeps the stored host profile.
+	Machine *MachineInfo `json:"machine,omitempty"`
 }
 
 // EndSessionRequest marks a session ended.
@@ -141,6 +144,9 @@ func (r RegisterSessionRequest) Validate() error {
 		if _, err := NormalizeRepo(r.Repo); err != nil {
 			return err
 		}
+	}
+	if r.Machine != nil {
+		return r.Machine.Validate()
 	}
 	return nil
 }

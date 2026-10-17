@@ -167,6 +167,10 @@ func TestHostsAndReportTools(t *testing.T) {
 	}
 	mustOK(t, cs, "hosts", map[string]any{}, "host-a: 8c/16GB → 2 slots, running 0, cpu 0% mem 50%, seen ")
 	mustOK(t, cs, "hosts", map[string]any{"verbose": true}, "cpu_model cpu-x")
+	if err := h.Store.SetHostNote(bg, "", "host-a", api.HostNoteRequest{Note: "backend"}); err != nil {
+		t.Fatal(err)
+	}
+	mustOK(t, cs, "hosts", map[string]any{}, `host-a (0 live sessions) note: "backend"`)
 	mustOK(t, cs, "morning_report", map[string]any{}, "eport")
 }
 

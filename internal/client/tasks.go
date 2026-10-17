@@ -63,6 +63,19 @@ func (c *Client) Hosts(ctx context.Context) ([]api.Host, error) {
 	return out, err
 }
 
+// HostProfiles lists every machine's role note, detected tools and live sessions.
+func (c *Client) HostProfiles(ctx context.Context) ([]api.HostProfile, error) {
+	var out []api.HostProfile
+	_, err := c.do(ctx, http.MethodGet, "/api/v1/hosts/profiles", nil, &out)
+	return out, err
+}
+
+// SetHostNote sets (empty clears) the role note of machine name.
+func (c *Client) SetHostNote(ctx context.Context, name, note string) error {
+	_, err := c.do(ctx, http.MethodPut, "/api/v1/hosts/"+url.PathEscape(name)+"/note", api.HostNoteRequest{Note: note}, nil)
+	return err
+}
+
 // WhoAmI reports the kind of token this client presents (admin, host or session).
 func (c *Client) WhoAmI(ctx context.Context) (api.WhoAmI, error) {
 	var out api.WhoAmI

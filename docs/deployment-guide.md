@@ -146,6 +146,18 @@ agent-mesh setup-claude
 agent-mesh setup-claude --uninstall        # settings.json bytes match the first checksum
 ```
 
+## Machine roles
+
+After both machines have joined, describe them once so sessions can choose `target_host` themselves:
+
+```sh
+agent-mesh host-note "backend, API, web frontend"                       # on each machine, for itself
+agent-mesh host-note --host <mac-host> "frontend, Expo; Xcode, adb"     # or all of them from the hub machine
+agent-mesh host-note                                                    # check: notes, detected tools, live sessions
+```
+
+New sessions get the briefing once the mesh has two machines; sessions that are already open keep their old context until restarted.
+
 ## Backup and restore (manual)
 
 ```sh

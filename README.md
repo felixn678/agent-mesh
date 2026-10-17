@@ -60,6 +60,18 @@ Once every machine has run `setup-claude`, you work in ordinary Claude Code sess
 4. The hub messages your original session. You see the result at your next prompt, when the current turn ends, or immediately if your session is idle with its waiter running.
 5. The untargeted task goes to whichever eligible taker asks first: an idle session of that repo on any machine, or a daemon whose `[repos]` allowlist contains the repo.
 
+### Let sessions pick the machine
+
+Tell agent-mesh once what each machine is for. Sessions then route work without you naming a machine:
+
+```sh
+agent-mesh host-note "backend, API, DB, web frontend; mobile apps only via the web build"        # on <linux-host>
+agent-mesh host-note --host <mac-host> "frontend, React Native/Expo; Xcode, iOS simulator, adb"  # hub machine (admin token)
+agent-mesh host-note                                                                             # show every machine
+```
+
+Each session-start hook also reports the machine's OS and the tools it finds (Xcode, adb, the Android emulator, Chrome, node, go, docker, …). When the mesh has two or more machines, every new session gets a short briefing: each machine's note, tools and live session count, plus the rule. A machine you name always wins. Otherwise the session queues work that clearly fits another machine better (for example "build the Expo login screen and test it on the iOS simulator") with `target_host` for that machine, tells you which machine it chose and why, and does fitting work itself. A queued task runs only once a session (or daemon) on that machine has the same repo open; the session checks `sessions` and says so when none is open. A session token can only set its own machine's note; the admin token on the hub machine can set any. Notes are at most 300 bytes and are shown to sessions as your own description, quoted.
+
 Useful phrases inside a session: "list agentmesh sessions", "send `<name or id prefix>`: …", "show my inbox", "what is task 12 doing?". From a terminal: `agent-mesh task list`, `agent-mesh sessions`, `agent-mesh hosts`, `agent-mesh report`.
 
 Messages from other sessions are shown as untrusted data, never as instructions.
@@ -119,6 +131,7 @@ agent-mesh task get <id>
 agent-mesh task cancel|requeue <id>      # hub machine only (admin token)
 agent-mesh hosts [--verbose] [--sessions]   # daemon load per machine; --sessions also lists sessions
 agent-mesh sessions                        # live Claude sessions on every machine (worker:off = opted out)
+agent-mesh host-note [--host <name>] <text>|--clear   # what a machine is for; no args lists every machine
 agent-mesh report [--since 16h] [--out <file>]
 agent-mesh task -h                       # each subcommand also takes -h
 ```
@@ -138,7 +151,7 @@ agent-mesh setup-claude --uninstall # removes only what it added
 
 Setup needs `claude` on PATH and `session.token`. It appends one hook entry each to `SessionStart`, `UserPromptSubmit`, `Stop` and `SessionEnd` in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) by splicing bytes, so existing keys, hooks and formatting stay as they are; backup `settings.json.agentmesh-bak`, atomic write, symlinks followed. Its entries end in `--managed-by=agent-mesh`; only those are ever changed or removed. Re-running repairs them (and the MCP entry) after the binary moved or the hub URL changed; it refuses to run from a `go run` build. It registers the MCP server with `claude mcp add-json -s user` using a `headersHelper` (`agent-mesh hook mcp-headers`) that reads `session.token`, so no token is written to `~/.claude.json` or your shell env. It never changes existing skills, rules, or hooks. Restart running sessions afterwards. When a session ends, its `SessionEnd` hook marks it ended and releases any task it still holds (no attempt is spent), so another session can take it right away. Hooks fail open: if the hub is down or a token is missing they exit 0 silently within 800 ms and log to the hook log. `AGENTMESH_HOOKS=off` disables them (set for daemon workers). Name a session with `AGENTMESH_SESSION_NAME=<name>` before starting `claude`; start it with `AGENTMESH_WORKER=off` to opt it out of claiming tasks (its waiter then wakes only for messages and `task_claim` is refused).
 
-MCP tools: `task_add` (`target_host`, `target_session`, `from`: repo defaults to the caller session's git remote; `request_id` makes retries idempotent, and `task add` on the CLI sets one automatically), `task_list`, `task_get`, `hosts`, `morning_report`, `sessions`, `send` (to an id, a 4+ character prefix, or a name), and with a session token `inbox`, `task_claim`, `task_heartbeat`, `task_done`, `task_fail`, `task_release`; admin only: `task_cancel`, `task_requeue`. In this repo `.mcp.json` shadows the user-scope server and reads `$AGENTMESH_SESSION_TOKEN` (and `$AGENTMESH_URL`, default loopback).
+MCP tools: `task_add` (`target_host`, `target_session`, `from`: repo defaults to the caller session's git remote; `request_id` makes retries idempotent, and `task add` on the CLI sets one automatically), `task_list`, `task_get`, `hosts` (machines with their notes, tools and live sessions, plus daemon load), `morning_report`, `sessions`, `send` (to an id, a 4+ character prefix, or a name), and with a session token `inbox`, `task_claim`, `task_heartbeat`, `task_done`, `task_fail`, `task_release`; admin only: `task_cancel`, `task_requeue`. In this repo `.mcp.json` shadows the user-scope server and reads `$AGENTMESH_SESSION_TOKEN` (and `$AGENTMESH_URL`, default loopback).
 
 Version skew: the hub sends its version on every response (`X-AgentMesh-Version`, and `hub_version` in `/api/v1/whoami`), and sessions and daemons report theirs. When a machine runs a different release than the hub, `agent-mesh hosts`/`sessions` and the MCP `hosts`/`sessions` tools mark its rows (``version v0.1.0 ≠ hub v0.1.2 → run `agent-mesh update` there``), `doctor` warns, and a new session gets one line saying where to run `agent-mesh update`. Dev builds, pseudo-versions and older hubs or peers that report no version are not compared.
 

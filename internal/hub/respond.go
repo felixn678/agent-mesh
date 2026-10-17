@@ -70,7 +70,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, api.CodeEnded, err.Error())
 	case errors.Is(err, store.ErrInboxFull):
 		writeError(w, http.StatusConflict, api.CodeInboxFull, err.Error())
-	case errors.Is(err, store.ErrSessionOwner):
+	case errors.Is(err, store.ErrSessionOwner), errors.Is(err, store.ErrHostNoteOwner):
 		writeError(w, http.StatusForbidden, api.CodeForbidden, err.Error())
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		// Client went away or the hub is shutting down; not a server fault.

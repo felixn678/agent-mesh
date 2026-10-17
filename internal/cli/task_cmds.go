@@ -158,7 +158,7 @@ func taskByID(ctx context.Context, std cmdIO, c *client.Client, op string, args 
 		t, err = c.RequeueTask(ctx, id)
 	}
 	if err != nil {
-		return adminHint(op, err)
+		return adminHint("task "+op, err)
 	}
 	fmt.Fprintln(std.out, map[string]string{"cancel": "cancelled", "requeue": "requeued"}[op]+" "+format.TaskLine(t))
 	return nil

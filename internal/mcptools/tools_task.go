@@ -23,7 +23,7 @@ type TaskAddIn struct {
 	ToolProfile    string  `json:"tool_profile,omitempty" jsonschema:"host profile name"`
 	Host           string  `json:"host,omitempty"`
 	MaxAttempts    int     `json:"max_attempts,omitempty"`
-	TargetHost     string  `json:"target_host,omitempty" jsonschema:"run on this host only"`
+	TargetHost     string  `json:"target_host,omitempty" jsonschema:"machine to run on (see hosts)"`
 	TargetSession  string  `json:"target_session,omitempty" jsonschema:"session id, prefix or name"`
 	RequestID      string  `json:"request_id,omitempty" jsonschema:"generate a unique id per logical task and reuse it if you retry this call"`
 }

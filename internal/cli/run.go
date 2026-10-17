@@ -22,6 +22,7 @@ const usage = `usage:
   agent-mesh task cancel|requeue <id>        (hub machine only: needs admin.token)
   agent-mesh hosts [--verbose] [--sessions]
   agent-mesh sessions
+  agent-mesh host-note [--host <machine>] <text>|--clear
   agent-mesh inbox --session <id> [--wait]
   agent-mesh hook session-start|prompt|stop|session-end|mcp-headers
   agent-mesh setup-claude [--uninstall] [--dry-run] [--force]`
@@ -44,6 +45,8 @@ func run(ctx context.Context, std cmdIO, args []string) error {
 		return runHosts(ctx, std, rest)
 	case "sessions":
 		return runSessions(ctx, std, rest)
+	case "host-note":
+		return runHostNote(ctx, std, rest)
 	case "inbox":
 		return runInbox(ctx, std, rest, defaultWaitOpts)
 	case "hook":

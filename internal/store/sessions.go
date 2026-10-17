@@ -50,6 +50,11 @@ func (s *Store) RegisterSession(ctx context.Context, host string, r api.Register
 	if n, _ := res.RowsAffected(); n == 0 {
 		return api.Session{}, ErrSessionOwner
 	}
+	if r.Machine != nil {
+		if err := s.upsertMachine(ctx, host, *r.Machine); err != nil {
+			return api.Session{}, err
+		}
+	}
 	return s.getSession(ctx, r.ID)
 }
 

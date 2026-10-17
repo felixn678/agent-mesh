@@ -8,7 +8,7 @@
 | daemon (`agent-mesh daemon`) | per host, pull only. Samples load, claims a task when healthy, runs one `claude -p` worker per task, publishes, reports |
 | interactive sessions | ordinary Claude Code sessions with the agentmesh MCP tools and hooks: add tasks, message each other, claim tasks for their own repo when idle |
 | hooks and waiter (`hook`, `inbox --wait`) | register sessions (with their normalized git remote), deliver inbox messages, wake idle sessions for messages or claimable work, extend a held lease at Stop |
-| CLI (`task`, `hosts`, `report`, `token`) | human surface over REST |
+| CLI (`task`, `hosts`, `host-note`, `report`, `token`) | human surface over REST |
 | onboarding (`up`, `invite`, `join`, `doctor`) | config and token files, `hub.toml` edits, invite bundles, user services, health checks |
 | `setup-claude` | opt-in user-scope MCP server and additive hooks |
 
@@ -19,6 +19,8 @@ Task: client (CLI or MCP `task_add`) -> hub queue -> taker claims -> work -> `co
 Takers:
 - **Daemon**: sends its capabilities (repo keys, permission modes, tool profiles, budget cap) and a request id; the hub hands out the oldest queued task that fits, respects `host` / `target_host`, and never gives it a task with a `target_session`. Worktree from the daemon's own clone -> `claude -p` -> heartbeats -> journaled publish.
 - **Idle session**: `task_claim` hands out the oldest queued task whose repo equals the session's repo and whose `host` / `target_host` / `target_session` allow this host and session. The session works on a branch, pushes, and calls `task_done`.
+
+Routing between machines: `host_profiles` holds each machine's role note (set with `host-note`: a session token for its own machine, admin for any) and the OS and tools its session-start hook detected (file checks only, no subprocess). `GET /api/v1/hosts/profiles` merges profiles, daemon-reported hosts and machines with live sessions. With two or more machines the session-start hook appends a briefing that lists them and tells the session to set `target_host` when a request clearly fits another machine better, unless the user named one. The hub itself never routes by notes; it only enforces `target_host`.
 
 Repo keys are compared in canonical form (`api.CanonicalRepo`): git remotes become `github.com/<user>/<repo>`, short keys pass through.
 

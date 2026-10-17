@@ -23,22 +23,35 @@ type ReportIn struct {
 }
 
 func (t tools) addHostReportTools(srv *mcp.Server) {
-	mcp.AddTool(srv, &mcp.Tool{Name: "hosts", Description: "Hosts with hardware, slots and load."}, t.hosts)
+	mcp.AddTool(srv, &mcp.Tool{Name: "hosts", Description: "Machines (role, tools, sessions) and daemon load."}, t.hosts)
 	mcp.AddTool(srv, &mcp.Tool{Name: "morning_report", Description: "Overnight task report."}, t.morningReport)
 }
 
 func (t tools) hosts(ctx context.Context, _ *mcp.CallToolRequest, in HostsIn) (*mcp.CallToolResult, any, error) {
+	profiles, err := t.st.ListHostProfiles(ctx)
+	if err != nil {
+		return storeErr(err), nil, nil
+	}
 	list, err := t.st.ListHosts(ctx)
 	if err != nil {
 		return storeErr(err), nil, nil
 	}
-	if len(list) == 0 {
+	if len(profiles) == 0 && len(list) == 0 {
 		return textResult("no hosts"), nil, nil
 	}
-	now := t.st.Now()
-	lines := make([]string, len(list))
-	for i, h := range list {
-		lines[i] = format.HostLine(h, now, in.Verbose, version.Version)
+	var lines []string
+	if len(profiles) > 0 {
+		lines = append(lines, "machines (notes are written by the user):")
+		for _, h := range profiles {
+			lines = append(lines, "  "+format.HostProfileLine(h))
+		}
+	}
+	if len(list) > 0 {
+		lines = append(lines, "daemons:")
+		now := t.st.Now()
+		for _, h := range list {
+			lines = append(lines, "  "+format.HostLine(h, now, in.Verbose, version.Version))
+		}
 	}
 	return textResult(strings.Join(lines, "\n")), nil, nil
 }

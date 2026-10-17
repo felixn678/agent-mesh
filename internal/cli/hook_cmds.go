@@ -134,12 +134,12 @@ type hookCtx struct {
 	shown   []int64 // message ids rendered into the output, acked after it is written
 }
 
-// register refreshes the session and reports this binary's version; repo is
-// sent only at session start (an empty repo keeps the stored one).
-func (h *hookCtx) register(repo string, worker *bool) (api.Session, error) {
+// register refreshes the session and reports this binary's version; repo and
+// machine are sent only at session start (empty/nil keep the stored ones).
+func (h *hookCtx) register(repo string, worker *bool, machine *api.MachineInfo) (api.Session, error) {
 	return h.c.RegisterSession(h.ctx, api.RegisterSessionRequest{
 		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo, Worker: worker,
-		AgentVersion: version.Version})
+		AgentVersion: version.Version, Machine: machine})
 }
 
 // unread renders the session's unread messages ("" if none) without marking
@@ -156,13 +156,20 @@ func (h *hookCtx) unread() (string, error) {
 
 func (h *hookCtx) sessionStart() ([]byte, error) {
 	worker := workerMode()
-	s, err := h.register(gitRemote(h.ctx, h.in.Cwd), &worker)
+	machine := localProbe().detectMachine()
+	s, err := h.register(gitRemote(h.ctx, h.in.Cwd), &worker, &machine)
 	if err != nil {
 		return nil, err
 	}
 	text := sessionStartText(s, worker)
 	if skew := version.LocalSkew(version.Version, h.c.HubVersion()); skew != "" {
 		text += "\n[agentmesh] " + skew + " (tell the user once)."
+	}
+	// Best effort: without the briefing the session only routes when told.
+	if profiles, err := h.c.HostProfiles(h.ctx); err != nil {
+		logHook("session-start host profiles", err)
+	} else if mesh := format.MeshMachines(profiles, s.Host); mesh != "" {
+		text += "\n\n" + mesh
 	}
 	msgs, err := h.unread()
 	if err != nil {
@@ -175,7 +182,7 @@ func (h *hookCtx) sessionStart() ([]byte, error) {
 }
 
 func (h *hookCtx) prompt() ([]byte, error) {
-	if _, err := h.register("", nil); err != nil {
+	if _, err := h.register("", nil, nil); err != nil {
 		return nil, err
 	}
 	msgs, err := h.unread()
@@ -192,7 +199,7 @@ func (h *hookCtx) prompt() ([]byte, error) {
 // death to ask for a restart. stop_hook_active (a stop already continued by
 // a hook) always allows, so a session can never loop.
 func (h *hookCtx) stop() ([]byte, error) {
-	if _, err := h.register("", nil); err != nil {
+	if _, err := h.register("", nil, nil); err != nil {
 		return nil, err
 	}
 	if err := heartbeatHeld(h.ctx, h.c, h.in.SessionID); err != nil {

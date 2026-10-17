@@ -52,6 +52,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/v1/tasks", s.anyToken(s.listTasks))
 	m.HandleFunc("GET /api/v1/tasks/{id}", s.anyToken(s.getTask))
 	m.HandleFunc("GET /api/v1/hosts", s.anyToken(s.listHosts))
+	m.HandleFunc("GET /api/v1/hosts/profiles", s.anyToken(s.listHostProfiles))
 	m.HandleFunc("GET /api/v1/report", s.anyToken(s.report))
 	m.HandleFunc("GET /api/v1/whoami", s.authed(anyone, func(w http.ResponseWriter, _ *http.Request, p api.Principal) {
 		who := api.WhoAmIFor(p)
@@ -70,6 +71,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/v1/sessions/{id}/end", s.authed(isSession, s.endSession))
 	m.HandleFunc("GET /api/v1/sessions", s.authed(adminOrSession, s.listSessions))
 	m.HandleFunc("POST /api/v1/messages", s.authed(adminOrSession, s.sendMessage))
+	m.HandleFunc("PUT /api/v1/hosts/{name}/note", s.authed(adminOrSession, s.setHostNote))
 	m.HandleFunc("GET /api/v1/messages/inbox", s.authed(isSession, s.inbox))
 	m.HandleFunc("POST /api/v1/messages/ack", s.authed(isSession, s.ackMessages))
 	s.routeSessionTasks()

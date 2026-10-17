@@ -14,13 +14,13 @@ import (
 	"github.com/felixn678/agent-mesh/internal/mcptools/format"
 )
 
-// adminHint turns a 403 on an admin-only task command into advice: cancel and
-// requeue need admin.token, which `agent-mesh up` writes on the hub machine only.
-func adminHint(op string, err error) error {
+// adminHint turns a 403 on an admin-only command (e.g. "task cancel") into
+// advice: it needs admin.token, which `agent-mesh up` writes on the hub machine only.
+func adminHint(cmd string, err error) error {
 	var he *client.HTTPError
 	if errors.As(err, &he) && he.Status == http.StatusForbidden {
-		return fmt.Errorf("task %s needs the admin token, which exists only on the hub machine: run it there "+
-			"(or set AGENTMESH_TOKEN to the admin token): %w", op, err)
+		return fmt.Errorf("%s needs the admin token, which exists only on the hub machine: run it there "+
+			"(or set AGENTMESH_TOKEN to the admin token): %w", cmd, err)
 	}
 	return err
 }
@@ -54,6 +54,13 @@ func runHosts(ctx context.Context, std cmdIO, args []string) error {
 		fmt.Fprintln(std.out, "no daemon has reported load yet (a machine appears here once `agent-mesh daemon` runs on it)")
 		if list, err := c.ListSessions(ctx, true); err == nil && len(list) > 0 {
 			fmt.Fprintln(std.out, "machines with live Claude sessions: "+sessionHosts(list)+"  (details: agent-mesh sessions)")
+		}
+	}
+	// Roles and tools; a hub older than host notes answers 404, which is skipped.
+	if list, err := c.HostProfiles(ctx); err == nil && len(list) > 0 {
+		fmt.Fprintln(std.out, "machines (set a role with `agent-mesh host-note`):")
+		for _, h := range list {
+			fmt.Fprintln(std.out, "  "+format.HostProfileLine(h))
 		}
 	}
 	return nil
