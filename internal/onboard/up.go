@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 )
@@ -96,8 +97,29 @@ func tailscaleHint(ctx context.Context, e *Env, listen string) {
 }
 
 // tailscaleIP returns this machine's tailnet IPv4 address, or "".
+// macTailscaleCLI is the CLI inside the Mac app (App Store and standalone
+// builds), which does not put `tailscale` on PATH. A variable for tests.
+var macTailscaleCLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+
+// tailscaleBin is the tailscale CLI to run, or "" when Tailscale is absent.
+func tailscaleBin(e *Env) string {
+	if p, err := e.Runner.LookPath("tailscale"); err == nil {
+		return p
+	}
+	if e.GOOS == "darwin" {
+		if _, err := os.Stat(macTailscaleCLI); err == nil {
+			return macTailscaleCLI
+		}
+	}
+	return ""
+}
+
 func tailscaleIP(ctx context.Context, e *Env) string {
-	out, err := e.Runner.Output(ctx, "tailscale", "ip", "-4")
+	bin := tailscaleBin(e)
+	if bin == "" {
+		return ""
+	}
+	out, err := e.Runner.Output(ctx, bin, "ip", "-4")
 	if err != nil {
 		return ""
 	}

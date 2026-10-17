@@ -75,5 +75,6 @@ func (d *Daemon) checkHealth(ctx context.Context, force bool) {
 	d.unhealthy, d.infraFails = "", 0
 }
 
-// preflightEvery is how often an unhealthy host re-checks itself.
-var preflightEvery = 10 * time.Minute
+// preflightEvery is how often an unhealthy host re-checks itself, so a fixed
+// problem (a tool installed, a login renewed) clears within minutes.
+var preflightEvery = 2 * time.Minute

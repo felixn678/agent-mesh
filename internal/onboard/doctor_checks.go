@@ -128,11 +128,11 @@ func serviceChecks(ctx context.Context, e *Env, isHub, hubReachable bool) []Resu
 }
 
 func tailscaleCheck(ctx context.Context, e *Env) Result {
-	if _, err := e.Runner.LookPath("tailscale"); err != nil {
+	if tailscaleBin(e) == "" {
 		return Result{"tailscale", Warn, "not installed (only needed for multi-machine use)", "https://tailscale.com/download"}
 	}
 	if ip := tailscaleIP(ctx, e); ip != "" {
 		return Result{"tailscale", Pass, "tailnet address " + ip, ""}
 	}
-	return Result{"tailscale", Warn, "installed but not connected", "tailscale up"}
+	return Result{"tailscale", Warn, "installed but not connected", "open the Tailscale app and connect (Linux: sudo tailscale up)"}
 }
