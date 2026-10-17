@@ -126,7 +126,7 @@ Run once after joining the Mac; each step says what "good" looks like.
 
 ### Admin token for the CLI
 
-`report`, `task cancel` and `task requeue` read `<config-dir>/admin.token` automatically on the hub machine. Keep the admin token out of shell-global env. This repo's `.mcp.json` expects the session token in `AGENTMESH_SESSION_TOKEN` (for example `export AGENTMESH_SESSION_TOKEN="$(cat ~/.config/agent-mesh/session.token)"` in a gitignored `.envrc`); the hub refuses admin and daemon tokens on session endpoints.
+`report`, `task cancel` and `task requeue` read `<config-dir>/admin.token` automatically on the hub machine. Keep the admin token out of shell-global env. The MCP server Claude uses comes from `setup-claude` (user scope; its `headersHelper` reads `session.token`), so no repo needs its own `.mcp.json`; the hub refuses admin and daemon tokens on session endpoints.
 
 ## Optional: Tailscale and a second host (manual)
 

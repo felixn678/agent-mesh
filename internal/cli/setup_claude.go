@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-// mcpName is the user-scope MCP server name; this repo's .mcp.json uses the
-// same name so the project entry shadows it here.
+// mcpName is the user-scope MCP server name. A project .mcp.json with the
+// same name would shadow it in that project.
 const mcpName = "agentmesh"
 
 // setupEnv holds every path setup-claude touches (tests point them at a temp HOME).
