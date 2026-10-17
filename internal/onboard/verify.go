@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"time"
 
 	"github.com/felixn678/agent-mesh/internal/client"
@@ -45,7 +47,24 @@ func explainHubErr(hubURL string, err error) error {
 	case errors.As(err, &he):
 		return fmt.Errorf("hub at %s answered: %w", hubURL, err)
 	}
-	return fmt.Errorf("cannot reach hub at %s: %w", hubURL, err)
+	return fmt.Errorf("cannot reach hub at %s: %w\n%s", hubURL, err, unreachableHint(hubURL))
+}
+
+// tailnetRange is Tailscale's address block (100.64.0.0/10).
+var tailnetRange = netip.MustParsePrefix("100.64.0.0/10")
+
+// unreachableHint says what to check when the hub does not answer; for a
+// Tailscale address the usual cause is this machine not being on the tailnet.
+func unreachableHint(hubURL string) string {
+	host := hubURL
+	if u, err := url.Parse(hubURL); err == nil {
+		host = u.Hostname()
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && tailnetRange.Contains(ip) {
+		return "hint: " + host + " is a Tailscale address. Make sure Tailscale is installed and Connected on this machine, " +
+			"logged in with the same account as the hub machine (`tailscale status` must list the hub)."
+	}
+	return "hint: check that the hub is running (`agent-mesh doctor` on the hub machine) and that this machine can reach that address."
 }
 
 // verifyEventually retries verifyToken for up to timeout; used after a SIGHUP

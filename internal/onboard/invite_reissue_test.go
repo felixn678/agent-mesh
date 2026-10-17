@@ -58,3 +58,12 @@ func TestRemoveFromTableKeepsOtherLines(t *testing.T) {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestUnreachableHintNamesTailscale(t *testing.T) {
+	if h := unreachableHint("http://100.94.1.2:47878"); !strings.Contains(h, "Tailscale") {
+		t.Errorf("tailnet hint: %s", h)
+	}
+	if h := unreachableHint("http://192.0.2.10:47878"); strings.Contains(h, "Tailscale") || !strings.Contains(h, "agent-mesh doctor") {
+		t.Errorf("generic hint: %s", h)
+	}
+}
