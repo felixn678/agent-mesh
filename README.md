@@ -2,9 +2,9 @@
 
 Let Claude Code sessions on different machines work together.
 
-You run many Claude Code sessions on each machine, say a Linux box and a Mac. Normally they can only talk to sessions on the same machine. With agent-mesh you pick one **lead** session per machine. The leads talk to each other across machines, hand work to the right machine, and report back. Every other session keeps working as usual.
+You run many Claude Code sessions on each machine, say a Linux box and a Mac. Normally they can only talk to sessions on the same machine. With agent-mesh you turn one session per machine into a **gateway session**. Gateway sessions talk to each other across machines, so work can go to the machine that fits it best. All sessions on a machine, the gateway included, keep talking to each other the way Claude Code already allows.
 
-<p align="center"><img src="docs/assets/mesh-flow.svg" alt="The Ubuntu lead sends a task through the hub to the Mac lead, which splits it among the Mac sessions and sends one summary back" width="900"></p>
+<p align="center"><img src="docs/assets/mesh-flow.svg" alt="The Ubuntu gateway session sends a task through the hub to the Mac gateway session, which shares it with the other Mac sessions and sends one summary back" width="900"></p>
 
 ## What you need
 
@@ -40,7 +40,7 @@ Something wrong? `agent-mesh doctor` checks the machine and tells you how to fix
 
 ## Use it
 
-In the Claude Code session that should be the lead on each machine, type:
+In one Claude Code session on each machine, type this to make it the gateway session:
 
 ```
 /am:on
@@ -50,9 +50,9 @@ Then just ask in plain words, for example:
 
 > Build the login API here, and ask the Mac to build the iOS screen and test it on the simulator.
 
-The lead sends the Mac part to the Mac lead, which shares it with the sessions on the Mac and sends back one summary. `/am:off` turns a session back into an ordinary one.
+The gateway session sends the Mac part to the Mac gateway session. How the work is shared on each machine is up to you: often the gateway hands it to the other sessions there, as you would ask any Claude Code session to, and sends back one summary. `/am:off` turns a gateway back into an ordinary session.
 
-**Tip:** tell agent-mesh what each machine is good at, so leads pick the right machine by themselves:
+**Tip:** tell agent-mesh what each machine is good at, so gateway sessions pick the right machine by themselves:
 
 ```sh
 agent-mesh host-note "backend, API, database, web"            # run on the Linux box

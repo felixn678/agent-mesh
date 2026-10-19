@@ -50,7 +50,7 @@ Manual setup (tokens, units, editing `hub.toml` by hand) is still supported: see
 
 ## How a task travels
 
-Once every machine has run `setup-claude`, run `/am:on` in the session that should coordinate on each machine (typically your lead session). The lead splits work, hands local parts to the other sessions on its machine as usual, and talks to the lead on the other machine through the mesh. For example, in a lead session inside `~/Code/<repo>` on your Linux box:
+Once every machine has run `setup-claude`, run `/am:on` in the session that should coordinate on each machine (its gateway session; typically the session you use as a lead). The gateway splits work, hands local parts to the other sessions on its machine as usual, and talks to the gateway on the other machine through the mesh. For example, in a gateway session inside `~/Code/<repo>` on your Linux box:
 
 > Split this refactor into 3 tasks. Run 2 of them on `<mac-host>`.
 
