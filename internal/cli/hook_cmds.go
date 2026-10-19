@@ -35,6 +35,7 @@ type hookInput struct {
 	HookEventName  string `json:"hook_event_name"`
 	StopHookActive bool   `json:"stop_hook_active"`
 	Reason         string `json:"reason"`
+	Prompt         string `json:"prompt"`
 }
 
 // hooksOff reports whether hooks must no-op (set by the daemon for workers).
@@ -104,20 +105,31 @@ func hookEvent(ctx context.Context, stdin io.Reader, event string) ([]byte, *hoo
 	if !api.ValidSessionID(in.SessionID) {
 		return nil, nil, fmt.Errorf("invalid session id %q", in.SessionID)
 	}
+	toggle := ""
+	if event == "prompt" {
+		toggle = meshToggle(in.Prompt)
+	}
+	if toggle == "" && !meshOn(in.SessionID) {
+		return nil, nil, nil // not in the mesh: no token read, no hub call
+	}
 	c, err := sessionClient()
 	if err != nil {
 		return nil, nil, err
 	}
 	h := &hookCtx{ctx: ctx, c: c, in: in, waiters: waitersDir()}
 	var out []byte
-	switch event {
-	case "session-start":
+	switch {
+	case toggle == "on":
+		out, err = h.join()
+	case toggle == "off":
+		out, err = h.leave()
+	case event == "session-start":
 		out, err = h.sessionStart()
-	case "prompt":
+	case event == "prompt":
 		out, err = h.prompt()
-	case "stop":
+	case event == "stop":
 		out, err = h.stop()
-	case "session-end":
+	case event == "session-end":
 		// End first (one cheap call), then hand back held tasks; both stay
 		// within the hook's time budget and fail open.
 		err = errors.Join(c.EndSession(ctx, in.SessionID), releaseHeld(ctx, c, in.SessionID))
@@ -157,11 +169,49 @@ func (h *hookCtx) unread() (string, error) {
 }
 
 func (h *hookCtx) sessionStart() ([]byte, error) {
+	text, err := h.briefing()
+	if err != nil {
+		return nil, err
+	}
+	return contextOutput("SessionStart", text)
+}
+
+// join handles a `mesh on` prompt: it records the choice, registers the
+// session and gives it the same briefing a session started in the mesh gets.
+func (h *hookCtx) join() ([]byte, error) {
+	if err := setMeshOn(h.in.SessionID, true); err != nil {
+		return nil, err
+	}
+	text, err := h.briefing()
+	if err != nil {
+		return nil, err
+	}
+	return contextOutput("UserPromptSubmit", "[agentmesh] The user typed `mesh on`: this session is now in the mesh. "+
+		"Start the message waiter, then confirm in one short line.\n"+text)
+}
+
+// leave handles a `mesh off` prompt: it records the choice, ends the session
+// on the hub and hands back any task it holds.
+func (h *hookCtx) leave() ([]byte, error) {
+	if err := setMeshOn(h.in.SessionID, false); err != nil {
+		return nil, err
+	}
+	err := errors.Join(h.c.EndSession(h.ctx, h.in.SessionID), releaseHeld(h.ctx, h.c, h.in.SessionID))
+	if err != nil {
+		logHook("mesh off", err) // the choice is recorded; the hub entry expires on its own
+	}
+	return contextOutput("UserPromptSubmit", "[agentmesh] The user typed `mesh off`: this session left the mesh. "+
+		"Stop its message waiter if one is running (TaskStop), do not use the agentmesh tools any more, and confirm in one short line.")
+}
+
+// briefing registers the session and returns what it needs to know to use
+// the mesh: its id, the waiter, the machines and any unread messages.
+func (h *hookCtx) briefing() (string, error) {
 	worker := workerMode()
 	machine := localProbe().detectMachine()
 	s, err := h.register(gitRemote(h.ctx, h.in.Cwd), &worker, &machine)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	text := sessionStartText(s, worker)
 	if skew := version.LocalSkew(version.Version, h.c.HubVersion()); skew != "" {
@@ -175,12 +225,12 @@ func (h *hookCtx) sessionStart() ([]byte, error) {
 	}
 	msgs, err := h.unread()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if msgs != "" {
 		text += "\n\n" + msgs
 	}
-	return contextOutput("SessionStart", text)
+	return text, nil
 }
 
 func (h *hookCtx) prompt() ([]byte, error) {

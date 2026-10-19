@@ -73,6 +73,7 @@ func TestFriendInstallsAndUsesMesh(t *testing.T) {
 		const sid = "b1b1b1b1-0000-4000-8000-000000000001"
 		start := laptop.command(context.Background(), "hook", "session-start")
 		start.Dir = repo
+		start.Env = append(start.Env, "AGENTMESH=on") // the user put this session in the mesh
 		start.Stdin = strings.NewReader(`{"session_id":"` + sid + `","cwd":"` + repo + `","hook_event_name":"SessionStart","source":"startup"}`)
 		ctxOut, err := start.Output()
 		if err != nil || !strings.Contains(string(ctxOut), "inbox --wait --session "+sid) {

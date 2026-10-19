@@ -31,6 +31,7 @@ func testEnv(t *testing.T, h *hubtest.Hub) string {
 	t.Setenv("AGENTMESH_TOKEN", "")
 	t.Setenv("AGENTMESH_SESSION_TOKEN", "")
 	t.Setenv("AGENTMESH_HOOKS", "")
+	t.Setenv("AGENTMESH", "on") // hook tests exercise a session in the mesh
 	t.Setenv("AGENTMESH_SESSION_NAME", "")
 	t.Setenv("AGENTMESH_URL", "")
 	if h != nil {
