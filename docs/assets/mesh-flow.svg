@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" width="960" height="470" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+  <title>agent-mesh: leads talk across machines, other sessions stay local</title>
+  <style>
+    .panel { fill: #111827; stroke: #374151; stroke-width: 1.5; }
+    .title { fill: #f9fafb; font-size: 17px; font-weight: 600; }
+    .note { fill: #9ca3af; font-size: 12.5px; }
+    .sess { fill: #1f2937; stroke: #4b5563; stroke-width: 1.2; }
+    .sesst { fill: #d1d5db; font-size: 13px; }
+    .lead { fill: #1e3a5f; stroke: #60a5fa; stroke-width: 2; }
+    .leadt { fill: #eff6ff; font-size: 14px; font-weight: 600; }
+    .leads { fill: #93c5fd; font-size: 11.5px; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .hub { fill: #3b2a0b; stroke: #f59e0b; stroke-width: 2; }
+    .hubt { fill: #fef3c7; font-size: 15px; font-weight: 600; }
+    .hubs { fill: #fcd34d; font-size: 11.5px; }
+    .local { stroke: #4b5563; stroke-width: 1.5; stroke-dasharray: 4 4; fill: none; }
+    .mesh { stroke: #f59e0b; stroke-width: 2.5; fill: none; }
+    .cap { fill: #e5e7eb; font-size: 15px; }
+    .legend { fill: #9ca3af; font-size: 12px; }
+  </style>
+
+  <rect x="0" y="0" width="960" height="470" rx="16" fill="#0b0f17"/>
+
+  <!-- machines -->
+  <rect class="panel" x="20" y="20" width="350" height="330" rx="12"/>
+  <text class="title" x="40" y="50">Ubuntu</text>
+  <text class="note" x="40" y="70">backend, API, web</text>
+  <rect class="panel" x="590" y="20" width="350" height="330" rx="12"/>
+  <text class="title" x="610" y="50">Mac</text>
+  <text class="note" x="610" y="70">iOS, React Native, Xcode</text>
+
+  <!-- links -->
+  <path id="u1" class="local" d="M210,215 L150,127"/>
+  <path id="u2" class="local" d="M210,215 L150,215"/>
+  <path id="u3" class="local" d="M210,215 L150,303"/>
+  <path id="m1" class="local" d="M750,215 L810,127"/>
+  <path id="m2" class="local" d="M750,215 L810,215"/>
+  <path id="m3" class="local" d="M750,215 L810,303"/>
+  <path id="x" class="mesh" d="M330,215 L630,215"/>
+  <path id="xr" d="M630,215 L330,215" fill="none"/>
+  <path id="m1r" d="M810,127 L750,215" fill="none"/>
+  <path id="m2r" d="M810,215 L750,215" fill="none"/>
+  <path id="m3r" d="M810,303 L750,215" fill="none"/>
+
+  <!-- sessions -->
+  <g>
+    <rect class="sess" x="40" y="105" width="110" height="44" rx="8"/><text class="sesst" x="95" y="132" text-anchor="middle">session</text>
+    <rect class="sess" x="40" y="193" width="110" height="44" rx="8"/><text class="sesst" x="95" y="220" text-anchor="middle">session</text>
+    <rect class="sess" x="40" y="281" width="110" height="44" rx="8"/><text class="sesst" x="95" y="308" text-anchor="middle">session</text>
+    <rect class="sess" x="810" y="105" width="110" height="44" rx="8"/><text class="sesst" x="865" y="132" text-anchor="middle">session</text>
+    <rect class="sess" x="810" y="193" width="110" height="44" rx="8"/><text class="sesst" x="865" y="220" text-anchor="middle">session</text>
+    <rect class="sess" x="810" y="281" width="110" height="44" rx="8"/><text class="sesst" x="865" y="308" text-anchor="middle">session</text>
+  </g>
+
+  <!-- leads -->
+  <rect class="lead" x="210" y="183" width="120" height="64" rx="10">
+    <animate attributeName="stroke-width" values="2;2;5;2;2" keyTimes="0;0.8;0.85;0.9;1" dur="10s" repeatCount="indefinite"/>
+  </rect>
+  <text class="leadt" x="270" y="211" text-anchor="middle">lead</text>
+  <text class="leads" x="270" y="231" text-anchor="middle">/am:on</text>
+  <rect class="lead" x="630" y="183" width="120" height="64" rx="10">
+    <animate attributeName="stroke-width" values="2;2;5;2;2" keyTimes="0;0.22;0.27;0.32;1" dur="10s" repeatCount="indefinite"/>
+  </rect>
+  <text class="leadt" x="690" y="211" text-anchor="middle">lead</text>
+  <text class="leads" x="690" y="231" text-anchor="middle">/am:on</text>
+
+  <!-- step 1: task Ubuntu lead -> Mac lead (0-2.5s) -->
+  <g>
+    <circle r="8" fill="#f59e0b"/>
+    <text x="-14" y="-14" fill="#fcd34d" font-size="12" font-weight="600">task</text>
+    <animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.02;0.24;1" calcMode="linear"><mpath href="#x"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.02;0.24" calcMode="discrete" dur="10s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- step 2: Mac lead hands out work locally (2.6-4.4s) -->
+  <g fill="#60a5fa">
+    <circle r="6"><animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.26;0.42;1" calcMode="linear"><mpath href="#m1"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.26;0.42" calcMode="discrete" dur="10s" repeatCount="indefinite"/></circle>
+    <circle r="6"><animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.27;0.43;1" calcMode="linear"><mpath href="#m2"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.27;0.43" calcMode="discrete" dur="10s" repeatCount="indefinite"/></circle>
+    <circle r="6"><animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.28;0.44;1" calcMode="linear"><mpath href="#m3"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.28;0.44" calcMode="discrete" dur="10s" repeatCount="indefinite"/></circle>
+  </g>
+
+  <!-- Mac sessions working (4.4-5.6s) -->
+  <g fill="none" stroke="#34d399" stroke-width="2.5" opacity="0">
+    <rect x="810" y="105" width="110" height="44" rx="8"/>
+    <rect x="810" y="193" width="110" height="44" rx="8"/>
+    <rect x="810" y="281" width="110" height="44" rx="8"/>
+    <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.44;0.56" calcMode="discrete" dur="10s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- step 3: results back to the Mac lead (5.6-6.8s) -->
+  <g fill="#34d399">
+    <circle r="6"><animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.56;0.68;1" calcMode="linear"><mpath href="#m1r"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.56;0.68" calcMode="discrete" dur="10s" repeatCount="indefinite"/></circle>
+    <circle r="6"><animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.56;0.68;1" calcMode="linear"><mpath href="#m2r"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.56;0.68" calcMode="discrete" dur="10s" repeatCount="indefinite"/></circle>
+    <circle r="6"><animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.56;0.68;1" calcMode="linear"><mpath href="#m3r"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.56;0.68" calcMode="discrete" dur="10s" repeatCount="indefinite"/></circle>
+  </g>
+
+  <!-- step 4: one summary back to Ubuntu (6.9-8.5s) -->
+  <g>
+    <circle r="8" fill="#34d399"/>
+    <text x="-14" y="-14" fill="#6ee7b7" font-size="12" font-weight="600">done</text>
+    <animateMotion dur="10s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.69;0.85;1" calcMode="linear"><mpath href="#xr"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.69;0.85" calcMode="discrete" dur="10s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- Ubuntu sessions keep chatting locally the whole time -->
+  <g fill="#9ca3af">
+    <circle r="4"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#u1"/></animateMotion></circle>
+    <circle r="4"><animateMotion dur="3.4s" begin="0.8s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath href="#u2"/></animateMotion></circle>
+    <circle r="4"><animateMotion dur="3s" begin="1.5s" repeatCount="indefinite"><mpath href="#u3"/></animateMotion></circle>
+  </g>
+
+  <!-- hub -->
+  <rect class="hub" x="415" y="180" width="130" height="70" rx="12"/>
+  <text class="hubt" x="480" y="210" text-anchor="middle">hub</text>
+  <text class="hubs" x="480" y="230" text-anchor="middle">inbox + task queue</text>
+  <text class="legend" x="480" y="275" text-anchor="middle">over Tailscale</text>
+
+  <!-- captions -->
+  <g class="cap" text-anchor="middle">
+    <text x="480" y="395" opacity="0">1 · The Ubuntu lead sends a task for the Mac through the hub
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.01;0.25" calcMode="discrete" dur="10s" repeatCount="indefinite"/></text>
+    <text x="480" y="395" opacity="0">2 · The Mac lead splits it among the Mac sessions (plain Claude Code messaging)
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.25;0.56" calcMode="discrete" dur="10s" repeatCount="indefinite"/></text>
+    <text x="480" y="395" opacity="0">3 · Mac sessions report back to their lead
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.56;0.69" calcMode="discrete" dur="10s" repeatCount="indefinite"/></text>
+    <text x="480" y="395" opacity="0">4 · The Mac lead sends one summary back to Ubuntu
+      <animate attributeName="opacity" values="0;1;0" keyTimes="0;0.69;0.99" calcMode="discrete" dur="10s" repeatCount="indefinite"/></text>
+  </g>
+
+  <!-- legend -->
+  <g class="legend">
+    <line x1="235" y1="440" x2="275" y2="440" stroke="#f59e0b" stroke-width="2.5"/>
+    <text x="283" y="444">agent-mesh (leads only, across machines)</text>
+    <line x1="560" y1="440" x2="600" y2="440" stroke="#4b5563" stroke-width="1.5" stroke-dasharray="4 4"/>
+    <text x="608" y="444">Claude Code's own messaging (same machine)</text>
+  </g>
+</svg>

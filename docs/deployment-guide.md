@@ -6,7 +6,7 @@ All names in angle brackets are placeholders. Never commit real values.
 
 ## Prerequisites (per host)
 
-git, gh, claude (logged in), gitleaks (`go install github.com/zricethezav/gitleaks/v8@<pinned>` or a release binary). Binary: the one-line installer or `go install` (see README "Install"), or build with Go 1.26: `make build` writes `bin/agent-mesh`; `make cross` writes `dist/agent-mesh-{linux-amd64,linux-arm64,darwin-arm64,darwin-amd64}`. Install the binary to a stable path (for example `~/.local/bin/agent-mesh`) before `up`, `join` or `setup-claude`: services and Claude hooks call it by its resolved absolute path.
+git, gh, claude (logged in), gitleaks (`go install github.com/zricethezav/gitleaks/v8@<pinned>` or a release binary). Binary: the one-line installer or `go install` (see [usage-guide.md](usage-guide.md#install)), or build with Go 1.26: `make build` writes `bin/agent-mesh`; `make cross` writes `dist/agent-mesh-{linux-amd64,linux-arm64,darwin-arm64,darwin-amd64}`. Install the binary to a stable path (for example `~/.local/bin/agent-mesh`) before `up`, `join` or `setup-claude`: services and Claude hooks call it by its resolved absolute path.
 
 ## Fast path: `up`, `invite`, `join`, `doctor`
 

@@ -29,3 +29,9 @@ Other directories:
 | `plans/` | implementation plans and review reports (history, not user docs) |
 
 Tests: `make test` (`go vet` + `go test -race ./...`). Daemon tests use the test binary itself as fake `claude`, `gh` and (if absent) `gitleaks` via symlinks, plus temp bare git repos; no real remotes are touched.
+
+## Development
+
+`make build test vet cross release lint-secrets clean`. Binaries land in `bin/` and `dist/`; `make release` writes the release archives and `SHA256SUMS` to `dist/release/`.
+
+Releases: pushing a `v*` tag runs `.github/workflows/release.yml` (vet, race tests, `scripts/build-release.sh`, `gh release create`). CI (`ci.yml`) runs vet, race tests on Linux and macOS, the cross-build, shellcheck and gitleaks on every push and PR to `main`.
