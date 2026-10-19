@@ -6,20 +6,24 @@ import (
 	"strings"
 )
 
-// A session takes part in the mesh only when the user turns it on: typing
-// `mesh on` as a prompt, or starting claude with AGENTMESH=on. Every other
+// A session takes part in the mesh only when the user turns it on: running
+// /am:on in it, or starting claude with AGENTMESH=on. Every other
 // session's hooks return at once without reading a token or calling the hub,
 // so ordinary sessions keep working (and messaging each other) as plain
 // Claude Code sessions.
 
-// meshToggle returns "on" or "off" when the prompt's first line is
-// `mesh on` / `mesh off` (any case, surrounding spaces ignored), else "".
+// meshToggle returns "on" or "off" when the prompt is the /am:on or /am:off
+// command (the hook sees the command as typed, before Claude expands it),
+// else "".
 func meshToggle(prompt string) string {
-	first, _, _ := strings.Cut(strings.TrimSpace(prompt), "\n")
-	switch strings.Join(strings.Fields(strings.ToLower(first)), " ") {
-	case "mesh on":
+	fields := strings.Fields(prompt)
+	if len(fields) == 0 {
+		return ""
+	}
+	switch strings.ToLower(fields[0]) {
+	case "/am:on":
 		return "on"
-	case "mesh off":
+	case "/am:off":
 		return "off"
 	}
 	return ""
@@ -33,8 +37,8 @@ func meshMarkPath(id string) string {
 	return filepath.Join(dir, "mesh", id)
 }
 
-// meshOn reports whether the session is in the mesh. A recorded `mesh on` /
-// `mesh off` wins (it survives resume and compaction); without one,
+// meshOn reports whether the session is in the mesh. A recorded /am:on or
+// /am:off wins (it survives resume and compaction); without one,
 // AGENTMESH=on in claude's environment turns it on.
 func meshOn(id string) bool {
 	if p := meshMarkPath(id); p != "" {

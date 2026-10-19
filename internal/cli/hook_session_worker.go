@@ -120,7 +120,7 @@ func sessionStartText(s api.Session, worker bool) string {
 		"To receive messages while idle, start `%s` with your Bash tool's run_in_background option (never nohup or &); "+
 		"when it exits, handle what it reported, then restart it the same way. If it says already running, do not restart. "+
 		"Use agentmesh to reach sessions on other machines; for sessions on this machine keep using Claude Code's own "+
-		"messaging (SendMessage, ListAgents). The user types `mesh off` to take this session out of the mesh. ",
+		"messaging (SendMessage, ListAgents). The user runs /am:off to take this session out of the mesh. ",
 		s.ID, s.Host, waiterCommand(s.ID))
 	if worker {
 		text += "When it reports claimable tasks and you are idle: task_claim, do the task in this repo on a new branch, " +

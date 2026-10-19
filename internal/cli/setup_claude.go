@@ -65,7 +65,8 @@ func runSetupClaude(ctx context.Context, std cmdIO, args []string) error {
 }
 
 // setupClaude installs (or removes) the agentmesh hooks in settings.json and
-// the user-scope MCP server. It never touches anything else in ~/.claude.
+// the user-scope MCP server, plus the /am:on and /am:off commands in their own
+// commands/am folder. It never touches anything else in ~/.claude.
 func setupClaude(ctx context.Context, std cmdIO, e setupEnv, f setupFlags) error {
 	if e.claude == "" && !f.dryRun {
 		return errors.New("setup-claude: `claude` not found on PATH")
@@ -88,8 +89,12 @@ func setupClaude(ctx context.Context, std cmdIO, e setupEnv, f setupFlags) error
 	if err := editMCP(ctx, std, e, f); err != nil {
 		return err
 	}
+	if err := editCommands(std, e, f); err != nil {
+		return err
+	}
 	if !f.uninstall && !f.dryRun {
 		fmt.Fprintln(std.out, "done. Restart running Claude sessions (hooks load at session start; review with /hooks if asked).")
+		fmt.Fprintln(std.out, "Sessions stay out of the mesh until you type /am:on in one (usually one lead per machine); /am:off takes it out.")
 		fmt.Fprintln(std.out, "Optional: name a session with /rename <name> in Claude, or export AGENTMESH_SESSION_NAME=<name> before starting it.")
 	}
 	return nil

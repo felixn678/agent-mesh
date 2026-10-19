@@ -11,8 +11,8 @@ import (
 
 func TestMeshToggle(t *testing.T) {
 	for prompt, want := range map[string]string{
-		"mesh on": "on", "  Mesh   ON \nthen message mac": "on", "MESH OFF": "off",
-		"turn mesh on": "", "mesh only": "", "run the tests": "", "": "",
+		"/am:on": "on", "  /AM:ON \nthen message mac": "on", "/am:off": "off",
+		"mesh on": "", "/am:online": "", "please /am:on": "", "run the tests": "", "": "",
 	} {
 		if got := meshToggle(prompt); got != want {
 			t.Errorf("meshToggle(%q) = %q, want %q", prompt, got, want)
@@ -73,8 +73,8 @@ func meshPrompt(t *testing.T, prompt string) hookOut {
 	return ho
 }
 
-// `mesh on` joins and briefs the session and sticks across later hooks;
-// `mesh off` ends it on the hub and silences the hooks again.
+// /am:on joins and briefs the session and sticks across later hooks;
+// /am:off ends it on the hub and silences the hooks again.
 func TestMeshOnAndOffByPrompt(t *testing.T) {
 	h := startHub(t)
 	testEnv(t, h)
@@ -82,10 +82,10 @@ func TestMeshOnAndOffByPrompt(t *testing.T) {
 	known(t, h)
 	peer(t, h, "hello")
 
-	ctx := meshPrompt(t, "mesh on").HookSpecificOutput.AdditionalContext
-	for _, want := range []string{"typed `mesh on`", "your session id is " + fixtureSession, "inbox --wait --session", "hello", "SendMessage"} {
+	ctx := meshPrompt(t, "/am:on").HookSpecificOutput.AdditionalContext
+	for _, want := range []string{"ran /am:on", "your session id is " + fixtureSession, "inbox --wait --session", "hello", "SendMessage"} {
 		if !strings.Contains(ctx, want) {
-			t.Fatalf("mesh on context lacks %q:\n%s", want, ctx)
+			t.Fatalf("/am:on context lacks %q:\n%s", want, ctx)
 		}
 	}
 	peer(t, h, "second")
@@ -93,17 +93,17 @@ func TestMeshOnAndOffByPrompt(t *testing.T) {
 		t.Fatalf("a session in the mesh should get its messages: %+v", ho)
 	}
 
-	if ctx := meshPrompt(t, "mesh off").HookSpecificOutput.AdditionalContext; !strings.Contains(ctx, "left the mesh") {
-		t.Fatalf("mesh off context: %q", ctx)
+	if ctx := meshPrompt(t, "/am:off").HookSpecificOutput.AdditionalContext; !strings.Contains(ctx, "left the mesh") {
+		t.Fatalf("/am:off context: %q", ctx)
 	}
 	if list, _ := h.Store.ListSessions(bg, true); len(list) != 1 {
 		t.Fatalf("mesh off did not end the session: %+v", list)
 	}
-	t.Setenv("AGENTMESH", "on") // a recorded `mesh off` wins over the env
+	t.Setenv("AGENTMESH", "on") // a recorded /am:off wins over the env
 	if _, out := hook(t, "prompt", "hook_prompt.json"); out != "" {
-		t.Fatalf("hooks after mesh off printed %q", out)
+		t.Fatalf("hooks after /am:off printed %q", out)
 	}
-	if ctx := meshPrompt(t, "mesh on").HookSpecificOutput.AdditionalContext; !strings.Contains(ctx, "your session id is") {
-		t.Fatalf("mesh on after mesh off: %q", ctx)
+	if ctx := meshPrompt(t, "/am:on").HookSpecificOutput.AdditionalContext; !strings.Contains(ctx, "your session id is") {
+		t.Fatalf("/am:on after /am:off: %q", ctx)
 	}
 }

@@ -7,10 +7,10 @@
 | hub (`agent-mesh hub`) | single owner of state. SQLite (WAL, `synchronous=FULL`, one connection). REST `/api/v1`, MCP `/mcp` (Streamable HTTP, stateless), reaper, token reload on `SIGHUP` |
 | daemon (`agent-mesh daemon`) | per host, pull only. Samples load, claims a task when healthy, runs one `claude -p` worker per task, publishes, reports |
 | interactive sessions | ordinary Claude Code sessions with the agentmesh MCP tools and hooks: add tasks, message each other, claim tasks for their own repo when idle |
-| hooks and waiter (`hook`, `inbox --wait`) | act only for sessions the user put in the mesh (`mesh on` prompt or `AGENTMESH=on`, recorded per session in the state dir; all others return without touching the hub); register sessions (with their normalized git remote), deliver inbox messages, wake idle sessions for messages or claimable work, extend a held lease at Stop |
+| hooks and waiter (`hook`, `inbox --wait`) | act only for sessions the user put in the mesh (`/am:on` command, seen by the prompt hook as typed, or `AGENTMESH=on`, recorded per session in the state dir; all others return without touching the hub); register sessions (with their normalized git remote), deliver inbox messages, wake idle sessions for messages or claimable work, extend a held lease at Stop |
 | CLI (`task`, `hosts`, `host-note`, `report`, `token`) | human surface over REST |
 | onboarding (`up`, `invite`, `join`, `doctor`) | config and token files, `hub.toml` edits, invite bundles, user services, health checks |
-| `setup-claude` | opt-in user-scope MCP server and additive hooks |
+| `setup-claude` | user-scope MCP server, additive hooks, and the `/am:on`/`/am:off` commands in `commands/am/` |
 
 ## Data flow
 

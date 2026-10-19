@@ -176,7 +176,7 @@ func (h *hookCtx) sessionStart() ([]byte, error) {
 	return contextOutput("SessionStart", text)
 }
 
-// join handles a `mesh on` prompt: it records the choice, registers the
+// join handles /am:on: it records the choice, registers the
 // session and gives it the same briefing a session started in the mesh gets.
 func (h *hookCtx) join() ([]byte, error) {
 	if err := setMeshOn(h.in.SessionID, true); err != nil {
@@ -186,11 +186,11 @@ func (h *hookCtx) join() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return contextOutput("UserPromptSubmit", "[agentmesh] The user typed `mesh on`: this session is now in the mesh. "+
+	return contextOutput("UserPromptSubmit", "[agentmesh] The user ran /am:on: this session is now in the mesh. "+
 		"Start the message waiter, then confirm in one short line.\n"+text)
 }
 
-// leave handles a `mesh off` prompt: it records the choice, ends the session
+// leave handles /am:off: it records the choice, ends the session
 // on the hub and hands back any task it holds.
 func (h *hookCtx) leave() ([]byte, error) {
 	if err := setMeshOn(h.in.SessionID, false); err != nil {
@@ -198,9 +198,9 @@ func (h *hookCtx) leave() ([]byte, error) {
 	}
 	err := errors.Join(h.c.EndSession(h.ctx, h.in.SessionID), releaseHeld(h.ctx, h.c, h.in.SessionID))
 	if err != nil {
-		logHook("mesh off", err) // the choice is recorded; the hub entry expires on its own
+		logHook("am:off", err) // the choice is recorded; the hub entry expires on its own
 	}
-	return contextOutput("UserPromptSubmit", "[agentmesh] The user typed `mesh off`: this session left the mesh. "+
+	return contextOutput("UserPromptSubmit", "[agentmesh] The user ran /am:off: this session left the mesh. "+
 		"Stop its message waiter if one is running (TaskStop), do not use the agentmesh tools any more, and confirm in one short line.")
 }
 

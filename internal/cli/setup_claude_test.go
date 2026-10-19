@@ -73,6 +73,11 @@ func TestSetupClaudeInstallIdempotentUninstall(t *testing.T) {
 		t.Fatalf("mode %v", st.Mode().Perm())
 	}
 	installed, _ := os.ReadFile(e.settingsPath)
+	for _, name := range []string{"on.md", "off.md"} {
+		if b, _ := os.ReadFile(filepath.Join(commandsDir(e), name)); string(b) != meshCommands[name] {
+			t.Fatalf("command %s: %q", name, b)
+		}
+	}
 
 	// Simulate claude having stored the server, then rerun: no change, no new backup.
 	writeClaudeJSON(t, e, mcpConfig(e))
@@ -90,6 +95,9 @@ func TestSetupClaudeInstallIdempotentUninstall(t *testing.T) {
 	runSetup(t, e, setupFlags{uninstall: true})
 	if now, _ := os.ReadFile(e.settingsPath); string(now) != orig {
 		t.Fatalf("uninstall not byte-identical:\n%s", now)
+	}
+	if _, err := os.Stat(commandsDir(e)); !os.IsNotExist(err) {
+		t.Fatalf("uninstall left the commands folder: %v", err)
 	}
 	if !strings.Contains(readLog(t, log), "mcp\nremove\n-s\nuser\nagentmesh\n") {
 		t.Fatalf("uninstall argv: %s", readLog(t, log))
@@ -200,5 +208,28 @@ func TestSetupClaudeRepairsOwnMCPAndRefusesTempBinary(t *testing.T) {
 	err := setupClaude(bg, cmdIO{in: strings.NewReader(""), out: &out, err: &out}, e, setupFlags{})
 	if err == nil || !strings.Contains(err.Error(), "go run") {
 		t.Fatalf("temp binary must be refused: %v", err)
+	}
+}
+
+// A user's own commands/am file is never replaced or removed without --force.
+func TestSetupClaudeKeepsUserCommandFiles(t *testing.T) {
+	e, _, _ := setupFixture(t)
+	mine := filepath.Join(commandsDir(e), "on.md")
+	if err := os.MkdirAll(commandsDir(e), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(mine, []byte("my own command\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, warn := runSetup(t, e, setupFlags{})
+	if b, _ := os.ReadFile(mine); string(b) != "my own command\n" || !strings.Contains(warn, "not written by setup-claude") {
+		t.Fatalf("user file changed or no warning: %q / %s", b, warn)
+	}
+	runSetup(t, e, setupFlags{uninstall: true})
+	if _, err := os.Stat(mine); err != nil {
+		t.Fatal("uninstall removed the user's file")
+	}
+	if _, err := os.Stat(filepath.Join(commandsDir(e), "off.md")); !os.IsNotExist(err) {
+		t.Fatal("uninstall left our off.md")
 	}
 }
