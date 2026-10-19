@@ -29,7 +29,7 @@ func TestUpInviteJoinDoctorEndToEnd(t *testing.T) {
 	if !strings.Contains(readFile(t, hubEnv.Path("hub.toml")), `"hubbox" =`) {
 		t.Error("hub.toml lacks default short host name")
 	}
-	if got := strings.Join(hubMgr.installs, ","); got != "hub,daemon" {
+	if got := strings.Join(hubMgr.installs, ","); got != "hub" {
 		t.Errorf("installs = %s", got)
 	}
 	if err := Doctor(ctx, hubEnv, nil); err != nil {
@@ -67,7 +67,7 @@ func TestUpInviteJoinDoctorEndToEnd(t *testing.T) {
 	if !strings.Contains(readFile(t, joiner.Path("daemon.toml")), "http://"+listen) {
 		t.Error("daemon.toml lacks hub url")
 	}
-	if strings.Join(joinMgr.installs, ",") != "daemon" || !strings.Contains(joinOut.String(), "setup-claude") {
+	if len(joinMgr.installs) != 0 || !strings.Contains(joinOut.String(), "agent-mesh daemon install") {
 		t.Errorf("join installs=%v out=%s", joinMgr.installs, joinOut)
 	}
 	joinOut.Reset()
@@ -171,7 +171,7 @@ func TestDoctorFailsOnLooseTokenAndMissingTool(t *testing.T) {
 	ctx := context.Background()
 	e, out, _ := newTestEnv(t, "box")
 	useHome(t, e)
-	if err := Up(ctx, e, []string{"--listen", freeAddr(t)}); err != nil {
+	if err := Up(ctx, e, []string{"--listen", freeAddr(t), "--daemon"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := chmod(e.Path("host.token"), 0o644); err != nil {
@@ -238,7 +238,7 @@ func TestDoctorRejectsSwappedTokens(t *testing.T) {
 	}
 }
 
-func TestUpListenChangeTellsToRerunSetupClaude(t *testing.T) {
+func TestUpListenChangeUpdatesClientConfig(t *testing.T) {
 	ctx := context.Background()
 	e, out, _ := newTestEnv(t, "box")
 	useHome(t, e)
@@ -250,7 +250,7 @@ func TestUpListenChangeTellsToRerunSetupClaude(t *testing.T) {
 	if err := Up(ctx, e, []string{"--no-service", "--name", "box", "--listen", listen}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "agent-mesh setup-claude") || !strings.Contains(readFile(t, e.Path("client.toml")), "http://"+listen) {
+	if !strings.Contains(out.String(), "hub URL is now http://"+listen) || !strings.Contains(readFile(t, e.Path("client.toml")), "http://"+listen) {
 		t.Errorf("client.toml/hint not updated:\n%s", out)
 	}
 }

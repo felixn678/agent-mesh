@@ -77,7 +77,7 @@ func TestUpWithNewListenRestartsHubAndDaemon(t *testing.T) {
 	if err := Up(ctx, e, []string{"--listen", freeAddr(t), "--no-service"}); err != nil {
 		t.Fatalf("up: %v\n%s", err, out)
 	}
-	if err := Up(ctx, e, []string{"--listen", freeAddr(t)}); err != nil {
+	if err := Up(ctx, e, []string{"--listen", freeAddr(t), "--daemon"}); err != nil {
 		t.Fatalf("rebind: %v\n%s", err, out)
 	}
 	if got := strings.Join(mgr.restarts, ","); got != "hub,daemon" {
@@ -100,7 +100,7 @@ func TestRejoinWithNewURLRestartsDaemon(t *testing.T) {
 	}
 	arg := joinLine(t, hubOut.String())
 	joiner, joinOut, joinMgr := newTestEnv(t, "laptop")
-	if err := Join(ctx, joiner, arg); err != nil {
+	if err := Join(ctx, joiner, append(arg, "--daemon")); err != nil {
 		t.Fatalf("join: %v\n%s", err, joinOut)
 	}
 	if len(joinMgr.restarts) != 0 {

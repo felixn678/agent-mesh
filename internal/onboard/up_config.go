@@ -126,26 +126,22 @@ func setHubURL(path, hubURL string) (bool, error) {
 	return true, writeAtomic(path, []byte(next), 0o600)
 }
 
-// startServices installs and starts the hub and daemon user services. When
-// the hub address changed, a running hub and daemon keep the old address in
-// memory, so both are restarted (hub first, so the daemon finds it).
-func startServices(ctx context.Context, e *Env, addressChanged bool) error {
-	units := []Unit{
-		{Name: "hub", Args: []string{"hub"}, Desc: "agent-mesh hub"},
-		{Name: "daemon", Args: []string{"daemon"}, Desc: "agent-mesh host daemon (claude -p workers)"},
+// startServices installs and starts the hub service, and the daemon when
+// asked for or already installed. When the hub address changed, a running hub
+// and daemon keep the old address in memory, so both are restarted (hub
+// first, so the daemon finds it).
+func startServices(ctx context.Context, e *Env, addressChanged, withDaemon bool) error {
+	if err := e.Mgr.Install(ctx, Unit{Name: "hub", Args: []string{"hub"}, Desc: "agent-mesh hub"}); err != nil {
+		return fmt.Errorf("install hub service: %w", err)
 	}
-	for _, u := range units {
-		if err := e.Mgr.Install(ctx, u); err != nil {
-			return fmt.Errorf("install %s service: %w", u.Name, err)
-		}
-		e.printf("service agent-mesh %s: installed and started\n", u.Name)
-	}
+	e.printf("service agent-mesh hub: installed and started\n")
 	if addressChanged {
-		for _, name := range []string{"hub", "daemon"} {
-			if err := e.Mgr.Restart(ctx, name); err != nil {
-				return fmt.Errorf("restart %s: %w", name, err)
-			}
+		if err := e.Mgr.Restart(ctx, "hub"); err != nil {
+			return fmt.Errorf("restart hub: %w", err)
 		}
+	}
+	if withDaemon || daemonInstalled(e) {
+		return installDaemon(ctx, e, addressChanged)
 	}
 	if e.GOOS == "linux" {
 		lingerHint(ctx, e)

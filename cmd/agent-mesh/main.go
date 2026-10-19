@@ -20,12 +20,12 @@ import (
 const usage = `usage: agent-mesh <command> [args]
 
 commands:
-  up       set up and start the hub on this machine (config, tokens, services)
-  invite   mint an invite line for another machine (hub machine)
-  join     join a hub: agent-mesh join <url>, then paste the invite code
+  up       set up and start the hub on this machine (--daemon: also the daemon)
+  invite   mint an invite code for another machine (hub machine)
+  join     join a hub: run agent-mesh join, then paste the invite code (--daemon: also the daemon)
   doctor   check config, tokens, hub, auth and tools
   hub      run the hub server
-  daemon   run the pull daemon on this host
+  daemon   run the pull daemon on this host (daemon install: add it as a service)
   task     add/list/show/cancel/requeue tasks
   hosts    show hosts and their load (--sessions: also live Claude sessions)
   sessions list live Claude sessions on every machine
@@ -64,6 +64,9 @@ func run(ctx context.Context, args []string) error {
 	case "hub":
 		return hub.Run(ctx, rest)
 	case "daemon":
+		if len(rest) > 0 && rest[0] == "install" {
+			return runDaemonInstall(ctx, rest[1:])
+		}
 		return daemon.Run(ctx, rest)
 	case "task", "hosts", "sessions", "host-note", "inbox", "hook", "setup-claude":
 		return cli.Run(ctx, args)

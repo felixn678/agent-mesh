@@ -109,8 +109,7 @@ esac
 
 cat <<EOF
 
-Next steps:
+Next step:
   hub machine:     agent-mesh up
-  other machines:  agent-mesh join <hub-url>   then paste the code printed by "agent-mesh invite <name>" on the hub
-  then, on each:   agent-mesh setup-claude && agent-mesh doctor
+  other machines:  agent-mesh join   then paste the code printed by "agent-mesh invite <name>" on the hub
 EOF

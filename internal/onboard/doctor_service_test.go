@@ -10,7 +10,11 @@ import (
 // warning; a hub that is neither a running service nor reachable stays "not
 // running". Neither fails doctor.
 func TestServiceChecksHubStartedManually(t *testing.T) {
-	e := &Env{Mgr: &fakeMgr{t: t, running: false}}
+	e, _, mgr := newTestEnv(t, "box")
+	mgr.running = false
+	if err := mgr.Install(context.Background(), daemonUnit); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		reachable bool
 		want      string
@@ -27,6 +31,20 @@ func TestServiceChecksHubStartedManually(t *testing.T) {
 		}
 		if rs[1].Name != "service daemon" || rs[1].Detail != "not running" {
 			t.Errorf("daemon result %+v", rs[1])
+		}
+	}
+}
+
+// Without an installed daemon, doctor says it is optional instead of warning.
+func TestServiceChecksDaemonOptional(t *testing.T) {
+	e, _, _ := newTestEnv(t, "box")
+	rs := serviceChecks(context.Background(), e, false, true)
+	if len(rs) != 1 || rs[0].Status != Pass || !strings.Contains(rs[0].Detail, "optional") {
+		t.Fatalf("results %+v", rs)
+	}
+	for _, r := range toolChecks(context.Background(), e) {
+		if r.Name == "gitleaks" || r.Name == "gh auth" {
+			t.Errorf("daemon-only tool checked without a daemon: %+v", r)
 		}
 	}
 }

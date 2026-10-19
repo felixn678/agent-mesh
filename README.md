@@ -78,33 +78,37 @@ Messages from other sessions are shown as untrusted data, never as instructions.
 
 ## Quick start
 
-Prereqs: git, gh, claude and gitleaks on each machine (`agent-mesh doctor` tells you what is missing). Install the binary as above (or build from a checkout with Go 1.26). Keep it at a stable path such as `~/.local/bin/agent-mesh`: services and Claude hooks run the binary by its absolute path.
+Each machine needs [Claude Code](https://claude.com/claude-code) (logged in), git, and [Tailscale](https://tailscale.com/download) connected to the same tailnet. Then it is one install line plus one command per machine.
+
+On the hub machine (any always-on machine; Linux or macOS):
 
 ```sh
-make build && install -m 0755 bin/agent-mesh ~/.local/bin/agent-mesh   # only when building from a checkout
+curl -fsSL https://raw.githubusercontent.com/felixn678/agent-mesh/main/scripts/install.sh | sh
+agent-mesh up                      # hub service, tokens, config; connects Claude Code on this machine
+agent-mesh invite <name>           # once per other machine: prints a secret invite code
 ```
 
-On the hub machine:
+On every other machine (yours or a friend's, same tailnet):
 
 ```sh
-agent-mesh up                      # config dir (0700), tokens, hub.toml, daemon.toml, client.toml, user services
-agent-mesh setup-claude            # connect Claude Code sessions on this machine
-agent-mesh doctor                  # green checks = ready
+curl -fsSL https://raw.githubusercontent.com/felixn678/agent-mesh/main/scripts/install.sh | sh
+agent-mesh join                    # paste the invite code when asked; connects Claude Code on this machine
 ```
 
-`up` is idempotent: re-running keeps existing tokens and configs. It listens on `127.0.0.1:47878` unless you pass `--listen` (the default port stays clear of common dev servers: 3000, 5173, 8080, Expo's 8081, wrangler's 8787), and refuses wildcard addresses. If Tailscale is present it prints the command to serve other machines (`agent-mesh up --listen <tailscale-ip>:47878`). Flags: `--listen <addr>`, `--name <host>` (default: short hostname), `--no-service` (write config only; then run `agent-mesh hub` and `agent-mesh daemon` yourself). On Linux run `loginctl enable-linger "$USER"` (hinted) so services survive logout and reboot.
+Restart open Claude sessions afterwards. That is all: services start again after a reboot by themselves (on Linux run `sudo loginctl enable-linger "$USER"` once, as hinted, so they also run while you are logged out). `agent-mesh doctor` checks a machine at any time and prints a fix for each problem.
 
-Add another machine (yours or a friend's, same tailnet):
+What the commands do:
 
-```sh
-agent-mesh invite <host-name>      # on the hub: prints one line plus a code, reloads the hub (SIGHUP, no restart)
-agent-mesh join <hub-url>          # on the new machine; paste the code when asked (keeps it out of shell history; --no-service skips the daemon service)
-agent-mesh setup-claude && agent-mesh doctor
-```
+- `up` is idempotent: re-running keeps existing tokens and configs. On its first run with Tailscale connected it listens on the tailnet address (`<tailscale-ip>:47878`), otherwise on `127.0.0.1:47878`; `--listen <addr>` picks another one and wildcard addresses are refused. The default port stays clear of common dev servers (3000, 5173, 8080, Expo's 8081, wrangler's 8787). Other flags: `--name <host>` (default: short hostname), `--no-service` (write config only; then run `agent-mesh hub` yourself).
+- `invite <name>` names the new machine; the name is only a label (any OS). It reloads the hub (SIGHUP, no restart). The code holds the new machine's tokens and the hub address: send it over a private channel only. Lost it? The hub keeps only token hashes, so run `agent-mesh invite <name> --reissue` for a new one (the old code and that machine's current tokens stop working, so it runs `join` again). If the hub listens on loopback, `invite` warns that other machines cannot reach it.
+- `join` verifies the tokens against the hub before writing anything. Entering the code at the prompt keeps it out of shell history; `agent-mesh join <code>` also works. `agent-mesh join <hub-url> <code>` overrides the address in the code.
+- `up` and `join` finish by running `agent-mesh setup-claude` (see [Claude Code integration](#claude-code-integration)), which adds only agent-mesh's own hooks and MCP server; `--no-claude` skips it.
 
-The invite line contains the new machine's tokens: send it over a private channel only. Lost the code? The hub keeps only token hashes, so it cannot show it again: run `agent-mesh invite <host-name> --reissue` for a new one (the old code and that machine's current tokens stop working, so it runs `join` again). `join` verifies the tokens against the hub before writing anything. If the hub listens on loopback, `invite` warns that other machines cannot reach it; use `invite --url http://<tailscale-ip>:47878` after rebinding.
+### Optional: the daemon
 
-Before a daemon takes tasks, add the repos it may work on to `[repos]` in its `daemon.toml` (see [Daemon config](docs/deployment-guide.md#daemon-config)) and give it GitHub credentials in `gh.env` (or a working `gh auth login`).
+Open Claude sessions take the tasks queued to their machine. To also work on tasks while no session is open, add the daemon, which runs headless `claude -p` workers: `agent-mesh up --daemon`, `agent-mesh join --daemon`, or later `agent-mesh daemon install`. It also needs `gh` (logged in) and `gitleaks`; `doctor` checks them only where the daemon is installed. Before it takes tasks, add the repos it may work on to `[repos]` in its `daemon.toml` (see [Daemon config](docs/deployment-guide.md#daemon-config)) and give it GitHub credentials in `gh.env` (or a working `gh auth login`). Machines set up before the daemon became optional keep theirs.
+
+Building from a checkout instead (Go 1.26): `make build && install -m 0755 bin/agent-mesh ~/.local/bin/agent-mesh`. Keep the binary at a stable path: services and Claude hooks run it by its absolute path.
 
 Manual setup (tokens, units, editing `hub.toml` by hand) is still supported: see [docs/deployment-guide.md](docs/deployment-guide.md).
 
@@ -138,9 +142,9 @@ agent-mesh task -h                       # each subcommand also takes -h
 
 `--budget` (USD, > 0, at most 100) is required. `--repo` is either a git remote (`https://github.com/<user>/<repo>.git`, `git@github.com:<user>/<repo>`; stored as `github.com/<user>/<repo>`) or a short key; it must match a daemon's `[repos]` key or a session's repo to be picked up. Other `task add` flags: `--base` (default `main`), `--mode acceptEdits|dontAsk|plan` (default `acceptEdits`), `--profile` (host tool profile, default `default`), `--max-attempts` (default 3).
 
-## Claude Code integration (opt-in)
+## Claude Code integration
 
-`deploy/install.sh` and `up` never touch `~/.claude*`. To let interactive sessions use the hub, run on each machine:
+`up` and `join` run `agent-mesh setup-claude` at the end (skip with `--no-claude`); `deploy/install.sh` and `doctor` never touch `~/.claude*`. Run it yourself to preview, repair or remove the integration:
 
 ```sh
 agent-mesh setup-claude --dry-run   # print the settings diff and the claude command; change nothing

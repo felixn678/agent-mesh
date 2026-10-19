@@ -66,7 +66,8 @@ func versionCheck(ctx context.Context, url, tok string) (Result, bool) {
 	return Result{name, Pass, version.Version + ", same as the hub", ""}, true
 }
 
-// toolChecks verifies the CLIs workers and sessions need.
+// toolChecks verifies the CLIs sessions need, plus those the daemon's
+// workers need when the daemon is installed.
 func toolChecks(ctx context.Context, e *Env) []Result {
 	var rs []Result
 	probe := func(name, bin string, args []string, hint string) {
@@ -88,8 +89,15 @@ func toolChecks(ctx context.Context, e *Env) []Result {
 	}
 	probe("claude", "claude", []string{"auth", "status"}, "install Claude Code and run: claude auth login")
 	probe("git", "git", nil, "install git")
-	probe("gh auth", "gh", []string{"auth", "status"}, "install GitHub CLI and run: gh auth login")
-	probe("gitleaks", "gitleaks", nil, "install: go install github.com/zricethezav/gitleaks/v8@latest")
+	if !daemonInstalled(e) {
+		return rs
+	}
+	gh, gitleaks := "install GitHub CLI (https://cli.github.com) and run: gh auth login", "install: go install github.com/zricethezav/gitleaks/v8@latest"
+	if e.GOOS == "darwin" {
+		gh, gitleaks = "brew install gh && gh auth login", "brew install gitleaks"
+	}
+	probe("gh auth", "gh", []string{"auth", "status"}, gh+"   (needed by the daemon)")
+	probe("gitleaks", "gitleaks", nil, gitleaks+"   (needed by the daemon)")
 	return rs
 }
 
@@ -106,9 +114,13 @@ func firstLine(b []byte) string {
 // tells a hub started by hand apart from a hub that is really down.
 func serviceChecks(ctx context.Context, e *Env, isHub, hubReachable bool) []Result {
 	var rs []Result
-	names := []string{"daemon"}
+	var names []string
 	if isHub {
-		names = []string{"hub", "daemon"}
+		names = append(names, "hub")
+	}
+	daemon := daemonInstalled(e)
+	if daemon {
+		names = append(names, "daemon")
 	}
 	for _, n := range names {
 		up, err := e.Mgr.Running(ctx, n)
@@ -119,10 +131,13 @@ func serviceChecks(ctx context.Context, e *Env, isHub, hubReachable bool) []Resu
 			rs = append(rs, Result{"service hub", Warn, "not installed/running as a service (hub reachable — started manually?)",
 				"agent-mesh up installs the hub service so it survives logout and reboot"})
 		case !up:
-			rs = append(rs, Result{"service " + n, Warn, "not running", "agent-mesh up (or join) installs it; or run: agent-mesh " + n})
+			rs = append(rs, Result{"service " + n, Warn, "not running", "agent-mesh up (hub) or agent-mesh daemon install; or run: agent-mesh " + n})
 		default:
 			rs = append(rs, Result{"service " + n, Pass, "running", ""})
 		}
+	}
+	if !daemon {
+		rs = append(rs, Result{"service daemon", Pass, "not installed (optional; agent-mesh daemon install adds it)", ""})
 	}
 	return rs
 }

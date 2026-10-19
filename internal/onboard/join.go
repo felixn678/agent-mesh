@@ -37,38 +37,44 @@ func (e *Env) readInviteCode() (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
-// Join configures this machine from an invite bundle: tokens, daemon.toml,
-// client.toml and the daemon service. Nothing is written if the hub cannot be
-// reached or rejects the tokens.
+// Join configures this machine from an invite code: tokens, daemon.toml and
+// client.toml, plus the daemon service when asked for (or already installed).
+// The code carries the hub URL; an explicit URL first overrides it. Nothing is
+// written if the hub cannot be reached or rejects the tokens.
 func Join(ctx context.Context, e *Env, args []string) error {
 	fs := flag.NewFlagSet("join", flag.ContinueOnError)
 	noService := fs.Bool("no-service", false, "write config only; do not install or start the daemon service")
-	const usage = "usage: agent-mesh join <hub-url> [--no-service]   (then paste the invite code when asked)\n       agent-mesh join <hub-url> <invite-code>|- [--no-service]"
+	withDaemon := fs.Bool("daemon", false, "also run the background daemon that works on tasks while no Claude session is open (needs gh and gitleaks)")
+	const usage = "usage: agent-mesh join [--daemon] [--no-service]   (then paste the invite code when asked)\n       agent-mesh join [<hub-url>] <invite-code>|- [--daemon] [--no-service]"
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	pos := fs.Args()
-	if len(pos) == 0 {
-		return errors.New(usage)
+	urlArg := ""
+	if len(pos) > 0 && looksLikeURL(pos[0]) {
+		urlArg, pos = pos[0], pos[1:]
 	}
-	rest := pos[1:]
 	code, haveCode := "", false
-	if len(rest) > 0 && (rest[0] == "-" || !strings.HasPrefix(rest[0], "-")) {
-		code, haveCode, rest = rest[0], true, rest[1:] // argv form: visible in the process list and shell history
+	if len(pos) > 0 && (pos[0] == "-" || !strings.HasPrefix(pos[0], "-")) {
+		code, haveCode, pos = pos[0], true, pos[1:] // argv form: visible in the process list and shell history
 	}
-	if err := fs.Parse(rest); err != nil || fs.NArg() > 0 { // flags may follow the positionals
+	if err := fs.Parse(pos); err != nil || fs.NArg() > 0 { // flags may follow the positionals
 		return errors.New(usage)
-	}
-	hubURL, err := ParseHubURL(pos[0])
-	if err != nil {
-		return err
 	}
 	if !haveCode || code == "-" {
+		var err error
 		if code, err = e.readInviteCode(); err != nil {
 			return err
 		}
 	}
 	b, err := DecodeBundle(code)
+	if err != nil {
+		return err
+	}
+	if urlArg == "" {
+		urlArg = b.URL
+	}
+	hubURL, err := ParseHubURL(urlArg)
 	if err != nil {
 		return err
 	}
@@ -94,23 +100,21 @@ func Join(ctx context.Context, e *Env, args []string) error {
 		return err
 	}
 	e.printf("joined hub %s as %q (config: %s)\n", hubURL, b.Host, e.ConfigDir)
-	if *noService {
-		e.printf("daemon service not installed (--no-service). Run: agent-mesh daemon\n")
-	} else {
-		unit := Unit{Name: "daemon", Args: []string{"daemon"}, Desc: "agent-mesh host daemon (claude -p workers)"}
-		if err := e.Mgr.Install(ctx, unit); err != nil {
-			return fmt.Errorf("install daemon service: %w", err)
+	switch {
+	case *noService:
+		e.printf("services not installed (--no-service).\n")
+	case *withDaemon || daemonInstalled(e):
+		if err := installDaemon(ctx, e, retargeted); err != nil {
+			return err
 		}
-		if retargeted { // a running daemon keeps the old hub URL until restarted
-			if err := e.Mgr.Restart(ctx, "daemon"); err != nil {
-				return fmt.Errorf("restart daemon: %w", err)
-			}
-		}
-		e.printf("service agent-mesh daemon: installed and started\n")
-		if e.GOOS == "linux" {
-			lingerHint(ctx, e)
-		}
+	default:
+		e.printf("daemon not installed: open Claude sessions here take this machine's tasks.\n" +
+			"  To also work on tasks while no session is open: agent-mesh daemon install\n")
 	}
-	e.printf("\nNext: agent-mesh setup-claude   (then: agent-mesh doctor)\n")
 	return nil
+}
+
+// looksLikeURL tells a hub URL argument apart from an invite code.
+func looksLikeURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
 }

@@ -57,6 +57,7 @@ func (f *fakeRunner) Output(_ context.Context, name string, args ...string) ([]b
 // the hub's reload watcher handles.
 type fakeMgr struct {
 	t        *testing.T
+	e        *Env // unit files are written under e.Home, like the real managers
 	running  bool // value Running reports
 	mu       sync.Mutex
 	installs []string
@@ -68,6 +69,11 @@ type fakeMgr struct {
 func (m *fakeMgr) Install(ctx context.Context, u Unit) error {
 	m.mu.Lock()
 	m.installs = append(m.installs, u.Name)
+	if p := UnitPath(m.e, u.Name); p != "" {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err == nil {
+			_ = os.WriteFile(p, []byte(u.Desc), 0o644)
+		}
+	}
 	skip := u.Name != "hub" || m.started
 	m.started = m.started || u.Name == "hub"
 	m.mu.Unlock()
@@ -117,6 +123,7 @@ func newTestEnv(t *testing.T, hostname string) (*Env, *bytes.Buffer, *fakeMgr) {
 		Binary:  "/fake/bin/agent-mesh", GOOS: "linux", Out: out, Runner: newFakeRunner(), Mgr: mgr,
 		Hostname: func() (string, error) { return hostname, nil },
 	}
+	mgr.e = e
 	return e, out, mgr
 }
 
@@ -161,14 +168,14 @@ func readFile(t *testing.T, path string) string {
 // joinLine returns {hub-url, invite-code} from invite output.
 func joinLine(t *testing.T, out string) []string {
 	t.Helper()
-	var url string
+	var code string
 	for _, l := range strings.Split(out, "\n") {
-		f := strings.Fields(l)
-		if len(f) == 3 && f[0] == "agent-mesh" && f[1] == "join" {
-			url = f[2]
+		if c, ok := strings.CutPrefix(l, "paste this code when asked: "); ok {
+			code = strings.TrimSpace(c)
 		}
-		if code, ok := strings.CutPrefix(l, "paste this code when asked: "); ok && url != "" {
-			return []string{url, strings.TrimSpace(code)}
+		if _, rest, ok := strings.Cut(l, "carries the hub address "); ok && code != "" {
+			url, _, _ := strings.Cut(rest, ". ")
+			return []string{url, code}
 		}
 	}
 	t.Fatalf("no join line in output:\n%s", out)

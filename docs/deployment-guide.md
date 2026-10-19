@@ -12,16 +12,17 @@ git, gh, claude (logged in), gitleaks (`go install github.com/zricethezav/gitlea
 
 | Command | Where | What it does |
 |---|---|---|
-| `agent-mesh up [--listen addr] [--name host] [--no-service]` | hub machine | creates `<config-dir>` (0700), `admin.token`, `host.token`, `session.token` (0600), `hub.toml`, `daemon.toml`, `client.toml`; installs and starts the hub and daemon user services (systemd `--user` on Linux, launchd on macOS) with a PATH that includes the directories of claude, git, gh and gitleaks. Idempotent. `--listen` on an existing setup rewrites `listen` and `hub_url` and restarts the hub; re-run `agent-mesh setup-claude` afterwards. |
-| `agent-mesh invite <host-name> [--url u]` | hub machine | mints host and session tokens, appends their hashes to `hub.toml` (comments preserved, file validated before it replaces the old one), signals the hub to reload (only after checking the pid really is an agent-mesh hub), prints `agent-mesh join <hub-url>` plus the code to paste when asked. Warns when the URL is loopback. |
-| `agent-mesh join <hub-url> [--no-service]` (code read from stdin; `<hub-url> <code>` also accepted) | other machine | verifies both tokens against the hub (`/api/v1/whoami`: host token must be kind host, session token kind session), then writes `host.token`, `session.token`, `daemon.toml`, `client.toml` and installs the daemon service. |
-| `agent-mesh doctor` | any | checks config dir, token modes, hub reachability, each token's kind and auth, `claude auth status`, git, `gh auth status`, gitleaks, that the daemon service PATH contains claude, services, Tailscale. Exit status is non-zero if a required check fails (services and Tailscale are warnings only). |
+| `agent-mesh up [--listen addr] [--name host] [--daemon] [--no-service] [--no-claude]` | hub machine | creates `<config-dir>` (0700), `admin.token`, `host.token`, `session.token` (0600), `hub.toml`, `daemon.toml`, `client.toml`; installs and starts the hub user service (systemd `--user` on Linux, launchd on macOS), plus the daemon service with `--daemon` or when it is already installed, with a PATH that includes the directories of claude, git, gh and gitleaks. Idempotent. A first run with Tailscale connected listens on the tailnet address. `--listen` on an existing setup rewrites `listen` and `hub_url` and restarts the hub (and daemon). Ends by running `setup-claude` unless `--no-claude`. |
+| `agent-mesh invite <host-name> [--url u]` | hub machine | mints host and session tokens, appends their hashes to `hub.toml` (comments preserved, file validated before it replaces the old one), signals the hub to reload (only after checking the pid really is an agent-mesh hub), prints `agent-mesh join` plus the code to paste when asked (the code carries the hub URL). Warns when the URL is loopback. |
+| `agent-mesh join [--daemon] [--no-service] [--no-claude]` (code read from stdin; `join <code>` and `join <hub-url> <code>` also accepted, the URL overriding the code's) | other machine | verifies both tokens against the hub (`/api/v1/whoami`: host token must be kind host, session token kind session), then writes `host.token`, `session.token`, `daemon.toml`, `client.toml`; installs the daemon service with `--daemon` or when it is already installed (then restarted if the hub URL changed). Ends by running `setup-claude` unless `--no-claude`. |
+| `agent-mesh daemon install` | any joined machine | adds the optional daemon service later. |
+| `agent-mesh doctor` | any | checks config dir, token modes, hub reachability, each token's kind and auth, `claude auth status`, git, and where the daemon is installed `gh auth status`, gitleaks and that its service PATH contains claude; services, Tailscale. Exit status is non-zero if a required check fails (services and Tailscale are warnings only). |
 
 The bundle is base64url of `{"v":1,"url","host","host_token","session_token"}`; treat it as a secret. The hub reloads its token tables (admin, host, session) on `SIGHUP`; a `hub.toml` that fails validation is rejected and the old tokens stay active. Listen address, database and timings still need a restart. While running, the hub writes `hub.pid` next to `hub.toml` so `invite` can signal it when no service manager owns the hub. `client.toml` holds `hub_url` for CLI commands (`AGENTMESH_URL` overrides it).
 
-`up` binds loopback unless you pass `--listen`, and refuses wildcard addresses. Unit files are rewritten only when their content changes, and only then is the service restarted. With `--no-service`, run `agent-mesh hub` and `agent-mesh daemon` yourself.
+`up` binds loopback unless you pass `--listen` or Tailscale is connected on its first run, and refuses wildcard addresses. Unit files are rewritten only when their content changes, and only then is the service restarted. With `--no-service`, run `agent-mesh hub` (and `agent-mesh daemon`) yourself.
 
-After `up` or `join`, a daemon has no repos yet: edit `[repos]` in `daemon.toml` and provide `gh.env` (below), then restart the daemon service.
+After `daemon install` (or `--daemon`), a daemon has no repos yet: edit `[repos]` in `daemon.toml` and provide `gh.env` (below), then restart the daemon service.
 
 ## Daemon config
 
@@ -111,12 +112,12 @@ Things that differ from Linux:
 Run once after joining the Mac; each step says what "good" looks like.
 
 1. `agent-mesh version` prints the release; `file "$(command -v agent-mesh)"` says `arm64` on Apple Silicon.
-2. On the hub: `agent-mesh invite <mac-name>`. On the Mac: `agent-mesh join <hub-url>` and paste the code (it is not echoed) → join reports both tokens verified.
+2. On the hub: `agent-mesh invite <mac-name>`. On the Mac: `agent-mesh join --daemon` and paste the code (it is not echoed) → join reports both tokens verified.
 3. `launchctl print gui/$(id -u)/com.agentmesh.daemon | grep state` → `state = running`.
 4. `agent-mesh daemon --print-load` → sensible cores/RAM/CPU model (for example `Apple M2`) and slots (8 GB RAM → 1 slot).
 5. `agent-mesh doctor` → all ✓ (hub reachable, session/host token kinds, `claude auth status`, `gh auth status`, service PATH contains claude).
 6. On the hub: `agent-mesh hosts` lists the Mac with its hardware line and no `unhealthy`.
-7. Re-run `agent-mesh join <hub-url>` with a fresh invite → no duplicate service (`launchctl list | grep agentmesh` shows one daemon).
+7. Re-run `agent-mesh join` with a fresh invite → no duplicate service (`launchctl list | grep agentmesh` shows one daemon).
 8. `shasum -a 256 ~/.claude/settings.json`, then `agent-mesh setup-claude --dry-run`, `agent-mesh setup-claude`; open Claude in a project repo: the `sessions` tool lists sessions on both machines; send a message each way.
 9. From a session on the Ubuntu machine: queue a task targeted at the Mac in the same repo ("add a task for `<mac-name>`: create hello.txt with hi and commit"). An idle Mac session in that repo wakes, does it and the requester gets the result.
 10. Crash test: while a daemon task runs, `launchctl kill SIGKILL gui/$(id -u)/com.agentmesh.daemon` → launchd restarts it within ~10 s; the orphaned `claude` is killed and the task released (`agent-mesh task get <id>`).
@@ -133,7 +134,7 @@ Run once after joining the Mac; each step says what "good" looks like.
 1. Install Tailscale on both hosts, same tailnet; note the hub's tailnet IP or MagicDNS name.
 2. Hub: `agent-mesh up --listen <tailnet-ip>:47878` (or set `listen` in `hub.toml` and restart the hub). The hub's own `daemon.toml` / `client.toml` `hub_url` must point to the same address. The hub retries bind, so tailscaled start order is fine.
 3. Optional firewall: `sudo ufw allow in on tailscale0 to any port 47878 proto tcp` (run by you, not by the scripts).
-4. Mac, fast path: `agent-mesh join <hub-url>` and paste the code printed by the hub's `invite` (see [macOS](#macos)). Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:47878"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
+4. Mac, fast path: `agent-mesh join --daemon` and paste the code printed by the hub's `invite` (see [macOS](#macos)). Manual path: `deploy/install.sh daemon` (substitutes your home into the plist, creates `~/Library/Logs/agent-mesh/`); edit `daemon.toml` (`hub_url = "http://<hub-tailnet-name>:47878"`); copy `host.token` and `session.token` into `<config-dir>`; create `gh.env`; then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentmesh.daemon.plist`. Stop with `launchctl bootout gui/$(id -u)/com.agentmesh.daemon`.
 5. On each host, `agent-mesh setup-claude`, then test a message in both directions.
 
 ## Claude integration check
