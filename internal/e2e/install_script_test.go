@@ -81,7 +81,7 @@ func TestInstallScriptVerifiesAndInstalls(t *testing.T) {
 		t.Fatalf("install: %v\n%s", err, out)
 	}
 	for _, want := range []string{"installed agent-mesh v1.2.3 to " + bin, "is not on your PATH",
-		"agent-mesh up", "agent-mesh join", "agent-mesh setup-claude"} {
+		"agent-mesh up", "agent-mesh join", "agent-mesh invite <name>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}

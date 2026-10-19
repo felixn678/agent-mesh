@@ -16,7 +16,19 @@ const lumio = "github.com/acme/lumio"
 
 var bg = context.Background()
 
-var joinLineRE = regexp.MustCompile(`(?s)agent-mesh join (\S+)\n.*paste this code when asked: (\S+)`)
+// joinLineRE matches invite output: the bare join command, the code (group 2)
+// and the hub address it carries (group 1).
+var joinLineRE = regexp.MustCompile(`(?s)\n  agent-mesh join\n.*paste this code when asked: (\S+)\n.*carries the hub address (\S+)\. `)
+
+// inviteParts returns {output, url, code} from invite output (indexed like
+// a submatch), or nil.
+func inviteParts(out string) []string {
+	m := joinLineRE.FindStringSubmatch(out)
+	if m == nil {
+		return nil
+	}
+	return []string{out, m[2], m[1]}
+}
 
 // mesh is the user's two-machine setup: "ubuntu" runs the hub, "mac" joined it.
 type mesh struct {
@@ -33,7 +45,7 @@ func setUp(t *testing.T) *mesh {
 	a, b := newMachine(t, bin, tools), newMachine(t, bin, tools)
 	addr := freeAddr(t)
 	url := "http://" + addr
-	a.mustRun("up", "--no-service", "--name", "ubuntu", "--listen", addr)
+	a.mustRun("up", "--no-service", "--no-claude", "--name", "ubuntu", "--listen", addr)
 
 	// Short session leases so the abandoned-task scenario runs in seconds.
 	hubTOML := filepath.Join(a.cfg, "hub.toml")
@@ -54,11 +66,11 @@ func setUp(t *testing.T) *mesh {
 	if strings.Contains(out, "not active yet") {
 		t.Fatalf("invite did not reach the running hub:\n%s", out)
 	}
-	m := joinLineRE.FindStringSubmatch(out)
+	m := inviteParts(out)
 	if m == nil || m[1] != url {
 		t.Fatalf("no join line for %s in:\n%s", url, out)
 	}
-	b.mustRun("join", m[1], m[2], "--no-service")
+	b.mustRun("join", m[2], "--no-service", "--no-claude") // the code alone carries the hub URL
 	return &mesh{url: url, ubuntu: a, mac: b, onA: a.sessions(url), onB: b.sessions(url),
 		admin: client.New(url, a.token("admin.token"))}
 }

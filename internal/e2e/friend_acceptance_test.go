@@ -32,14 +32,15 @@ func TestFriendInstallsAndUsesMesh(t *testing.T) {
 
 	addr := freeAddr(t)
 	url := "http://" + addr
-	hub.mustRun("up", "--no-service", "--name", "ubuntu", "--listen", addr)
+	hub.mustRun("up", "--no-service", "--no-claude", "--name", "ubuntu", "--listen", addr)
 	hub.startHub(url)
 
-	m := joinLineRE.FindStringSubmatch(hub.mustRun("invite", "laptop"))
+	m := inviteParts(hub.mustRun("invite", "laptop"))
 	if m == nil || m[1] != url {
 		t.Fatal("invite printed no join line for the hub URL")
 	}
-	join := laptop.command(context.Background(), "join", url, "--no-service")
+	// --no-claude: the subtest below checks setup-claude's exact round trip.
+	join := laptop.command(context.Background(), "join", "--no-service", "--no-claude")
 	join.Stdin = strings.NewReader(m[2] + "\n")
 	if out, err := join.CombinedOutput(); err != nil {
 		t.Fatalf("join with code on stdin: %v\n%s", err, out)
