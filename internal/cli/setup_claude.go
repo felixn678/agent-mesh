@@ -90,7 +90,7 @@ func setupClaude(ctx context.Context, std cmdIO, e setupEnv, f setupFlags) error
 	}
 	if !f.uninstall && !f.dryRun {
 		fmt.Fprintln(std.out, "done. Restart running Claude sessions (hooks load at session start; review with /hooks if asked).")
-		fmt.Fprintln(std.out, "Optional: export AGENTMESH_SESSION_NAME=<name> before starting claude to name a session.")
+		fmt.Fprintln(std.out, "Optional: name a session with /rename <name> in Claude, or export AGENTMESH_SESSION_NAME=<name> before starting it.")
 	}
 	return nil
 }

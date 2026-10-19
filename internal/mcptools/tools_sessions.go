@@ -68,8 +68,8 @@ func (t tools) send(ctx context.Context, _ *mcp.CallToolRequest, in SendIn) (*mc
 	return textResult("sent message " + strconv.FormatInt(m.ID, 10) + " to " + format.SessionLine(to, t.st.Now(), version.Version)), nil, nil
 }
 
-// resolveTarget maps a full id, unique prefix (≥4 chars) or unique name to a
-// session. Exact ids win; prefixes and names only match live sessions.
+// resolveTarget maps a full id, unique prefix (≥4 chars) or unique name
+// (case-insensitive) to a session. Exact ids win; prefixes and names only match live sessions.
 func (t tools) resolveTarget(ctx context.Context, to string) (api.Session, *mcp.CallToolResult) {
 	if to == "" {
 		return api.Session{}, errResult("to is required")
@@ -83,7 +83,7 @@ func (t tools) resolveTarget(ctx context.Context, to string) (api.Session, *mcp.
 		if s.ID == to {
 			return s, nil
 		}
-		if s.Alive && ((len(to) >= 4 && strings.HasPrefix(s.ID, to)) || s.Name == to) {
+		if s.Alive && ((len(to) >= 4 && strings.HasPrefix(s.ID, to)) || strings.EqualFold(s.Name, to)) {
 			cands = append(cands, s)
 		}
 	}

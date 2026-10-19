@@ -31,6 +31,7 @@ const hookLogMax = 256 * 1024
 type hookInput struct {
 	SessionID      string `json:"session_id"`
 	Cwd            string `json:"cwd"`
+	TranscriptPath string `json:"transcript_path"`
 	HookEventName  string `json:"hook_event_name"`
 	StopHookActive bool   `json:"stop_hook_active"`
 	Reason         string `json:"reason"`
@@ -134,11 +135,12 @@ type hookCtx struct {
 	shown   []int64 // message ids rendered into the output, acked after it is written
 }
 
-// register refreshes the session and reports this binary's version; repo and
-// machine are sent only at session start (empty/nil keep the stored ones).
+// register refreshes the session (name included, so a /rename shows up on the
+// next prompt) and reports this binary's version; repo and machine are sent
+// only at session start (empty/nil keep the stored ones).
 func (h *hookCtx) register(repo string, worker *bool, machine *api.MachineInfo) (api.Session, error) {
 	return h.c.RegisterSession(h.ctx, api.RegisterSessionRequest{
-		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: os.Getenv("AGENTMESH_SESSION_NAME"), Repo: repo, Worker: worker,
+		ID: h.in.SessionID, Cwd: h.in.Cwd, Name: sessionName(h.in), Repo: repo, Worker: worker,
 		AgentVersion: version.Version, Machine: machine})
 }
 

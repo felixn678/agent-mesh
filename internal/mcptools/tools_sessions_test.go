@@ -30,12 +30,13 @@ func TestSendResolvesTargetsAndInboxConsumes(t *testing.T) {
 	mustOK(t, a, "send", map[string]any{"from": "aaaa-1111", "to": "bbbb-2222", "text": "by id"}, "sent message 1 to bbbb-222")
 	mustOK(t, a, "send", map[string]any{"from": "aaaa-1111", "to": "bbbb-3", "text": "by prefix"}, "to bbbb-333")
 	mustOK(t, a, "send", map[string]any{"from": "aaaa-1111", "to": "beta", "text": "by name"}, "to bbbb-222")
+	mustOK(t, a, "send", map[string]any{"from": "aaaa-1111", "to": "BETA", "text": "by name, any case"}, "to bbbb-222")
 	mustErr(t, a, "send", map[string]any{"from": "aaaa-1111", "to": "bbbb", "text": "x"}, "ambiguous; candidates:\nbbbb-")
 	mustErr(t, a, "send", map[string]any{"from": "aaaa-1111", "to": "bbb", "text": "x"}, "no live session matches")
 	mustErr(t, a, "send", map[string]any{"from": "bbbb-2222", "to": "aaaa-1111", "text": "spoof"}, "another host")
 
-	out := mustOK(t, b, "inbox", map[string]any{"session": "bbbb-2222"}, "[agentmesh] 2 message(s)")
-	for _, want := range []string{"from host-a/host-a [alpha] session aaaa-111", "> by id", "> by name"} {
+	out := mustOK(t, b, "inbox", map[string]any{"session": "bbbb-2222"}, "[agentmesh] 3 message(s)")
+	for _, want := range []string{"from host-a/host-a [alpha] session aaaa-111", "> by id", "> by name", "> by name, any case"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in\n%s", want, out)
 		}
