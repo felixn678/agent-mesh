@@ -33,6 +33,9 @@ func Up(ctx context.Context, e *Env, args []string) error {
 	}
 	host := *name
 	if host == "" {
+		host = existingHubHost(e) // a re-run keeps the name chosen the first time
+	}
+	if host == "" {
 		var err error
 		if host, err = e.ShortHostName(); err != nil {
 			return err

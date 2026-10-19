@@ -16,6 +16,21 @@ import (
 // writeHubSide ensures the admin/host/session tokens and hub.toml. listen is
 // the explicit --listen ("" when not given). It returns the effective listen
 // address and whether an existing hub.toml's listen was changed.
+// existingHubHost is the name hub.toml gives this machine's host.token, or ""
+// before the first up.
+func existingHubHost(e *Env) string {
+	cfg, err := hub.LoadConfig(e.Path("hub.toml"))
+	if err != nil {
+		return ""
+	}
+	for name, hash := range cfg.HostTokens {
+		if isOwnHost(e, hash) {
+			return name
+		}
+	}
+	return ""
+}
+
 func writeHubSide(e *Env, host, listen string) (eff string, changed bool, err error) {
 	if err = ensureDir(e.ConfigDir); err != nil {
 		return

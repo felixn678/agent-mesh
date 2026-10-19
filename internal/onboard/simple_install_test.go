@@ -79,3 +79,20 @@ func TestDaemonInstall(t *testing.T) {
 		t.Fatalf("installs = %s", got)
 	}
 }
+
+// A re-run of up without --name keeps the name given the first time, even
+// when it differs from the hostname.
+func TestUpRerunKeepsTheFirstName(t *testing.T) {
+	ctx := context.Background()
+	e, out, _ := newTestEnv(t, "felix-box")
+	if err := Up(ctx, e, []string{"--no-service", "--name", "ubuntu"}); err != nil {
+		t.Fatal(err)
+	}
+	before := readFile(t, e.Path("hub.toml"))
+	if err := Up(ctx, e, []string{"--no-service"}); err != nil {
+		t.Fatalf("re-run: %v\n%s", err, out)
+	}
+	if readFile(t, e.Path("hub.toml")) != before {
+		t.Error("re-run without --name changed hub.toml")
+	}
+}
